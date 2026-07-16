@@ -26,9 +26,19 @@ export function generateMetadata(): Metadata {
     ? "Внутренняя система учёта сборки вагонов. Только для сотрудников завода. О заводе: rempassvagon.uz"
     : "Vagon yig‘ishni hisobga olish ichki tizimi. Faqat zavod xodimlari uchun. Zavod haqida: rempassvagon.uz";
   return {
+    // без metadataBase og:image уходит относительным путём и Telegram/соцсети
+    // его не подхватывают — нужен абсолютный URL
+    metadataBase: new URL("https://tyvqtzuz.vercel.app"),
     title,
     description,
-    openGraph: { title, description, siteName: "TYVQTZ", type: "website" },
+    openGraph: {
+      title,
+      description,
+      siteName: "TYVQTZ",
+      type: "website",
+      images: [{ url: "/og.png", width: 1200, height: 630, alt: "TYVQTZ" }],
+    },
+    twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
   };
 }
 
