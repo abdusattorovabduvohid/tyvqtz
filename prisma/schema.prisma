@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────── RBAC ────────────────────────────
+
+model Role {
+  id            String   @id @default(cuid())
+  nameUz        String   @unique
+  nameRu        String?
+  isSuperAdmin  Boolean  @default(false)
+  // JSON: { "<section>": ["view","create","update","delete"], ... }
+  permissions   String   @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users User[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  login        String   @unique // логин для входа
+  firstName    String // имя
+  lastName     String // фамилия
+  middleName   String? // отчество
+  photo        String? // путь к фотографии
+  passwordHash String
+  isActive     Boolean  @default(true)
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedWagonStages WagonStageAssignment[]
+  startedStages       WagonStage[]           @relation("StageStartedBy")
+  finishedStages      WagonStage[]           @relation("StageFinishedBy")
+  wagonCreationApprovals WagonCreationApproval[] @relation("WagonCreationApprover")
+}
+
+// ──────────────────────────── Вагоны ────────────────────────────
+
+model WagonType {
+  id        String   @id @default(cuid())
+  nameUz    String   @unique
+  nameRu    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wagons Wagon[]
+}
+
+// Шаблон этапа = «Позиция» из бумажного плана.
+// Это не одна работа, а НАБОР работ: у каждой своё время, а у позиции —
+// общее время (сумма), бригада и цех.
+model Stage {
+  id              String   @id @default(cuid())
+  number          Int      @unique // Позиция №
+  nameUz          String // название позиции (узб)
+  nameRu          String? // название позиции (рус)
+  // Сумма часов работ × 3600. Не вводится руками — считается из works.
+  // Оставлено полем, потому что на нём держится таймер этапа.
+  durationSeconds Int
+  workerCount     Int? // Количество работников на позицию
+  note            String? // Примечание, например «2-цех»
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  works StageWork[]
+}
+
+// Строка «Наименования работ» внутри позиции.
+model StageWork {
+  id      String @id @default(cuid())
+  stageId String
+  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  number  Int // № работы внутри позиции
+  nameUz  String
+  nameRu  String?
+  hours   Float // «Время работа»: 12ч, 2ч …
+
+  @@unique([stageId, number])
+}
+
+model Wagon {
+  id          String   @id @default(cuid())
+  nameUz      String // название вагона (узб)
+  nameRu      String? // название вагона (рус)
+  number      String // номер вагона
+  wagonTypeId String
+  wagonType   WagonType @relation(fields: [wagonTypeId], references: [id])
+  status      String    @default("pending") // pending | in_progress | done
+  // статус подтверждения создания вагона (1-я фаза согласования)
+  creationStatus String @default("approved") // pending | approved | rejected
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  stages           WagonStage[]
+  creationApprovals WagonCreationApproval[]
+}
+
+// Согласование СОЗДАНИЯ вагона (1-я фаза, отдельная группа людей, по очереди)
+model WagonCreationApproval {
+  id        String    @id @default(cuid())
+  wagonId   String
+  wagon     Wagon     @relation(fields: [wagonId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation("WagonCreationApprover", fields: [userId], references: [id], onDelete: Cascade)
+  order     Int       @default(0)
+  decision  String    @default("pending") // pending | approved | denied
+  comment   String?
+  decidedAt DateTime?
+
+  @@unique([wagonId, userId])
+}
+
+// Экземпляр этапа конкретного вагона (снимок шаблона + состояние/таймер)
+model WagonStage {
+  id              String    @id @default(cuid())
+  wagonId         String
+  wagon           Wagon     @relation(fields: [wagonId], references: [id], onDelete: Cascade)
+  number          Int
+  nameUz          String
+  nameRu          String?
+  // снимок позиции на момент создания вагона (сумма часов работ × 3600)
+  durationSeconds Int
+  workerCount     Int?
+  note            String?
+  status          String    @default("pending") // pending | in_progress | done | blocked
+  startedAt       DateTime?
+  startedById     String? // кто запустил этап
+  startedBy       User?     @relation("StageStartedBy", fields: [startedById], references: [id])
+  finishedAt      DateTime?
+  finishedById    String? // кто завершил этап
+  finishedBy      User?     @relation("StageFinishedBy", fields: [finishedById], references: [id])
+
+  assignments WagonStageAssignment[]
+  works       WagonStageWork[]
+
+  @@unique([wagonId, number])
+}
+
+// Снимок строки «Наименования работ» для конкретного вагона.
+// Шаблон потом меняется — у вагона остаётся то, по чему его строили.
+model WagonStageWork {
+  id           String     @id @default(cuid())
+  wagonStageId String
+  wagonStage   WagonStage @relation(fields: [wagonStageId], references: [id], onDelete: Cascade)
+  number       Int
+  nameUz       String
+  nameRu       String?
+  hours        Float
+
+  @@unique([wagonStageId, number])
+}
+
+model WagonStageAssignment {
+  id           String     @id @default(cuid())
+  wagonStageId String
+  wagonStage   WagonStage @relation(fields: [wagonStageId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // порядковый номер ответственного в вагоне (для отображения и drag&drop)
+  order Int @default(0)
+
+  // решение исполнителя по запуску этапа
+  decision  String    @default("pending") // pending | approved | denied
+  comment   String? // причина отказа
+  decidedAt DateTime?
+
+  // может ли этот человек нажимать «Старт» / «Завершить».
+  // Разрешение (decision) дают все назначенные, а кнопки — только эти.
+  // default(true) — чтобы у вагонов, созданных до появления поля, поведение не изменилось.
+  canExecute Boolean @default(true)
+
+  @@unique([wagonStageId, userId])
+}
