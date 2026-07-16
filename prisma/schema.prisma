@@ -2,9 +2,15 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Postgres, а не SQLite: на Vercel файловая система только для чтения и
+// у каждого запроса свой контейнер — файловая база там работать не может.
+// Имена переменных — как их создаёт интеграция Vercel Postgres:
+//   POSTGRES_PRISMA_URL      — через пул (pgbouncer), для обычных запросов
+//   POSTGRES_URL_NON_POOLING — прямое соединение, нужно для db push/миграций
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 // ──────────────────────────── RBAC ────────────────────────────

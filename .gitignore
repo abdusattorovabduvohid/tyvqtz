@@ -9,6 +9,7 @@ npm-debug.log*
 .env*.local
 prisma/dev.db
 prisma/dev.db-journal
+prisma/data-dump.json
 /public/uploads/*
 !/public/uploads/.gitkeep
 next-env.d.ts

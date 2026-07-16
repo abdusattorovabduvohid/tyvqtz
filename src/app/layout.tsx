@@ -1,6 +1,5 @@
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
-import "@mantine/dropzone/styles.css";
 import "./globals.css";
 
 import type { Metadata } from "next";

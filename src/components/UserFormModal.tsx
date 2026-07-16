@@ -13,12 +13,9 @@ import {
   Text,
   Box,
   LoadingOverlay,
-  rem,
 } from "@mantine/core";
-import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { IconUpload, IconPhoto, IconX } from "@tabler/icons-react";
 import { apiFetch } from "@/lib/client";
 import { useI18n } from "@/components/I18nProvider";
 
@@ -51,7 +48,6 @@ export function UserFormModal({
   const editing = Boolean(initial);
   const { t } = useI18n();
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
 
   const form = useForm({
@@ -93,25 +89,6 @@ export function UserFormModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, initial]);
-
-  async function handleDrop(files: File[]) {
-    const file = files[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await apiFetch<{ url: string }>("/api/upload", {
-        method: "POST",
-        body: fd,
-      });
-      setPhoto(res.url);
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
-    } finally {
-      setUploading(false);
-    }
-  }
 
   async function handleSubmit(values: typeof form.values) {
     setSaving(true);
@@ -159,36 +136,15 @@ export function UserFormModal({
         <LoadingOverlay visible={saving} />
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack>
+            {/* Загрузка фото временно отключена: на Vercel файловая система
+                только для чтения. Показываем аватар из инициалов. */}
             <Group justify="center">
-              <Stack align="center" gap="xs">
-                <Avatar src={photo || undefined} size={88} radius="50%" color="steel">
-                  {form.values.firstName?.[0]}
-                  {form.values.lastName?.[0]}
-                </Avatar>
-                <Dropzone
-                  onDrop={handleDrop}
-                  accept={IMAGE_MIME_TYPE}
-                  loading={uploading}
-                  maxSize={5 * 1024 * 1024}
-                  p="xs"
-                  styles={{ inner: { pointerEvents: "all" } }}
-                >
-                  <Group gap="xs" justify="center" style={{ minHeight: rem(40) }}>
-                    <Dropzone.Accept>
-                      <IconUpload size={20} />
-                    </Dropzone.Accept>
-                    <Dropzone.Reject>
-                      <IconX size={20} />
-                    </Dropzone.Reject>
-                    <Dropzone.Idle>
-                      <IconPhoto size={20} />
-                    </Dropzone.Idle>
-                    <Text size="xs" c="dimmed">
-                      {t("users.dropzone")}
-                    </Text>
-                  </Group>
-                </Dropzone>
-              </Stack>
+              <Avatar src={photo || undefined} size={88} radius="50%" color="steel">
+                <Text size="28px" fw={700}>
+                  {(form.values.firstName?.[0] ?? "").toUpperCase()}
+                  {(form.values.lastName?.[0] ?? "").toUpperCase()}
+                </Text>
+              </Avatar>
             </Group>
 
             <Group grow>
