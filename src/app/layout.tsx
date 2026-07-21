@@ -2,7 +2,7 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "./globals.css";
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   ColorSchemeScript,
   MantineProvider,
@@ -12,7 +12,19 @@ import { Notifications } from "@mantine/notifications";
 import { ModalsProvider } from "@mantine/modals";
 import { theme } from "./theme";
 import { I18nProvider } from "@/components/I18nProvider";
+import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 import { getLang } from "@/lib/i18n/server";
+
+// PWA: цвет системной строки в установленном приложении.
+// viewport-fit=cover — чтобы на iPhone в standalone-режиме контент корректно
+// раскладывался под «чёлкой». Зум намеренно НЕ блокируем (maximum-scale):
+// сотрудники увеличивают фото вагонов, и это же требование доступности.
+export const viewport: Viewport = {
+  themeColor: "#2f66c9",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 // Заголовок намеренно НЕ повторяет официальное имя завода: иначе в поиске
 // система конкурирует с rempassvagon.uz и её принимают за сайт завода.
@@ -39,6 +51,17 @@ export function generateMetadata(): Metadata {
       images: [{ url: "/og.png", width: 1200, height: 630, alt: "TYVQTZ" }],
     },
     twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
+    // iOS не читает manifest.webmanifest — установку на «Экран Домой»
+    // он настраивает через эти мета-теги и apple-touch-icon.
+    appleWebApp: {
+      capable: true,
+      title: "TYVQTZ",
+      statusBarStyle: "default",
+    },
+    icons: {
+      icon: "/icon.svg",
+      apple: "/icons/apple-touch-icon.png",
+    },
   };
 }
 
@@ -55,6 +78,7 @@ export default function RootLayout({
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="light">
+          <ServiceWorkerRegistrar />
           <Notifications position="top-right" />
           <I18nProvider initialLang={lang}>
             <ModalsProvider>{children}</ModalsProvider>

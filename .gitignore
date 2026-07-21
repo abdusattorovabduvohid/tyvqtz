@@ -10,6 +10,10 @@ npm-debug.log*
 prisma/dev.db
 prisma/dev.db-journal
 prisma/data-dump.json
+# дампы базы: внутри passwordHash сотрудников — в репозиторий нельзя
+prisma/backup-*.json
 /public/uploads/*
 !/public/uploads/.gitkeep
 next-env.d.ts
+.next-verify
+tsconfig.tsbuildinfo
