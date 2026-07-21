@@ -105,15 +105,32 @@ export function DashboardShell({
       >
         <AppShell.Header
           style={{
-            background: "rgba(255,255,255,0.8)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
+            // Без backdrop-filter: в установленном PWA на iOS размытие на
+            // фиксированной шапке ломает попадание тапа по её содержимому —
+            // бургер переставал открываться. Плюс это лишняя работа GPU.
+            background: "#ffffff",
             borderBottom: "1px solid var(--mantine-color-gray-2)",
           }}
         >
-          <Group h="100%" px="lg" justify="space-between">
-            <Group gap="sm">
-              <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+          <Group h="100%" px="lg" justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap">
+              {/* Зона нажатия 44×44 — минимум по Apple HIG. Прежние 28×28 у
+                  самого верха экрана в standalone-режиме перехватывала
+                  система, и меню не открывалось именно в «приложении». */}
+              <Burger
+                opened={opened}
+                onClick={toggle}
+                hiddenFrom="sm"
+                size="md"
+                aria-label={t("shell.menu")}
+                style={{
+                  width: 44,
+                  height: 44,
+                  position: "relative",
+                  zIndex: 2,
+                  flex: "none",
+                }}
+              />
               <Logo height={40} />
             </Group>
 

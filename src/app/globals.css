@@ -28,6 +28,45 @@ a {
   }
 }
 
+/* ── Установленное приложение (PWA) ───────────────────────────────────────
+   В standalone-режиме нет браузерной обвязки: страница начинается от самого
+   верха экрана, и на iPhone под системной строкой (часы, батарея) оказывалась
+   шапка вместе с бургером — тапы по нему забирала система. В Safari обвязка
+   это скрывала, поэтому меню не открывалось ТОЛЬКО в приложении.
+
+   Отступ берём из env(safe-area-inset-top) — он равен высоте «чёлки»/строки
+   состояния и работает благодаря viewport-fit=cover в layout.tsx.
+   На Android и в браузере inset = 0, поэтому правила ничего не меняют.
+
+   Шапка Mantine — position: fixed, её высоту знает переменная
+   --app-shell-header-offset: увеличиваем её, иначе контент уедет под шапку. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  body {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --app-shell-header-offset: calc(64px + var(--safe-top));
+  }
+
+  .mantine-AppShell-header {
+    height: calc(64px + var(--safe-top));
+    padding-top: var(--safe-top);
+  }
+
+  /* боковое меню тоже начинается ниже шапки и не заходит под «дом»-полоску */
+  .mantine-AppShell-navbar {
+    padding-bottom: calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Убирает задержку двойного тапа в iOS/Android: браузер перестаёт ждать
+   возможный double-tap-zoom и отдаёт клик сразу. Пинч-зум не трогаем.
+   Заодно это лечит «не нажимается с первого раза» у мелких кнопок шапки. */
+button,
+a,
+[role="button"],
+summary {
+  touch-action: manipulation;
+}
+
 /* плавная прокрутка и аккуратный скроллбар */
 * {
   scrollbar-width: thin;
