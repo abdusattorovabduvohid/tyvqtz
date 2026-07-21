@@ -66,6 +66,13 @@ export function generateMetadata(): Metadata {
       title: "TYVQTZ",
       statusBarStyle: "default",
     },
+    // Next из appleWebApp.capable отдаёт только apple-mobile-web-app-capable,
+    // а Chrome считает его устаревшим и пишет предупреждение в консоль.
+    // Стандартный тег нужен Android; Apple-вариант оставляем — iOS знает
+    // только его. Нужны оба.
+    other: {
+      "mobile-web-app-capable": "yes",
+    },
     icons: {
       icon: "/icon.svg",
       apple: "/icons/apple-touch-icon.png",
