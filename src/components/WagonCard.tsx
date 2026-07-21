@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { Box, Text, Group, ActionIcon, Menu, ThemeIcon } from "@mantine/core";
-import { IconDots, IconTrash, IconArrowRight, IconCheck, IconX } from "@tabler/icons-react";
+import {
+  IconDots,
+  IconTrash,
+  IconArrowRight,
+  IconCheck,
+  IconX,
+  IconCalendarEvent,
+} from "@tabler/icons-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useI18n } from "./I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
-import { workdaysRemaining, wagonDeadline, formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDate } from "@/lib/format";
 
 export interface WagonListItem {
   id: string;
@@ -17,7 +24,7 @@ export interface WagonListItem {
   status: "pending" | "in_progress" | "done" | "blocked";
   creationStatus: "pending" | "approved" | "rejected";
   progress: { done: number; total: number };
-  hours: { done: number; total: number };
+  days: { done: number; total: number };
   current: {
     number: number;
     nameRu: string | null;
@@ -25,6 +32,9 @@ export interface WagonListItem {
     status: string;
     note: string | null;
     workerCount: number | null;
+    sehs: string[];
+    plannedStart: string | null;
+    plannedEnd: string | null;
   } | null;
   assignees: {
     id: string;
@@ -32,11 +42,16 @@ export interface WagonListItem {
     lastName: string;
     middleName: string | null;
     photo: string | null;
+    seh: string | null;
+    role: { nameRu: string; nameUz: string | null } | null;
     decision: "pending" | "approved" | "denied";
     decidedAt: string | null;
   }[];
   deniedBy: { name: string; comment: string | null } | null;
   createdAt: string;
+  start: string; // «Ish boshlanish sanasi»
+  deadline: string; // дата сдачи (план или вручную)
+  daysLeft: number; // рабочих дней до сдачи
 }
 
 /** Тон карточки. У вагона, ждущего согласования создания, свой цвет — он ещё не в работе. */
@@ -55,8 +70,11 @@ function toneOf(w: WagonListItem) {
   return TONE[w.status] ?? TONE.pending;
 }
 
+/** Фамилия и инициалы — подпись мелким шрифтом под ролью. */
 const fio = (a: { firstName: string; lastName: string; middleName: string | null }) =>
-  [a.lastName, a.firstName, a.middleName].filter(Boolean).join(" ");
+  [a.lastName, a.firstName?.[0] && a.firstName[0] + ".", a.middleName?.[0] && a.middleName[0] + "."]
+    .filter(Boolean)
+    .join(" ");
 
 /** Галочка ответственного: разрешил / отклонил / ещё не решил. */
 function DecisionMark({ decision }: { decision: "pending" | "approved" | "denied" }) {
@@ -116,8 +134,7 @@ export function WagonCard({
   const reduce = useReducedMotion();
 
   const tone = toneOf(w);
-  const wdLeft = workdaysRemaining(w.createdAt);
-  const deadline = wagonDeadline(w.createdAt);
+  const wdLeft = w.daysLeft;
   const late = wdLeft <= 5;
 
   return (
@@ -206,14 +223,14 @@ export function WagonCard({
             </div>
             <div style={{ textAlign: "right" }}>
               <Text fw={800} size="22px" lh={1} c="#5b6b8c" style={{ letterSpacing: -0.4 }}>
-                {w.hours.done}
+                {w.days.done}
                 <Text span size="14px" c="#b9c2d4">
                   {" "}
-                  / {w.hours.total}
+                  / {w.days.total}
                 </Text>
               </Text>
               <Text size="11px" fw={600} c="#8a93a8" mt={5}>
-                {t("wagons.card.hours")}
+                {t("wagons.card.days")}
               </Text>
             </div>
           </Group>
@@ -225,30 +242,50 @@ export function WagonCard({
               p="sm"
               style={{ borderRadius: 12, background: tone.bg, border: `1px solid ${tone.bd}` }}
             >
-              <Group justify="space-between" wrap="nowrap" gap="sm" align="flex-start">
-                <Text size="14px" fw={700} lh={1.4} c="#0f1e3d" style={{ minWidth: 0 }}>
-                  <Text span fw={800} c={tone.c}>
-                    №{w.current.number}
-                  </Text>{" "}
-                  {pickName(w.current, lang)}
-                </Text>
+              {/* название этапа — на телефоне переносится целиком, не режется */}
+              <Text size="14px" fw={700} lh={1.4} c="#0f1e3d" style={{ wordBreak: "break-word" }}>
+                <Text span fw={800} c={tone.c}>
+                  №{w.current.number}
+                </Text>{" "}
+                {pickName(w.current, lang)}
+              </Text>
+
+              {/* сколько людей на позиции и в каких цехах */}
+              <Group gap={6} mt={7} wrap="wrap">
+                {!!w.current.workerCount && (
+                  <Box px={8} py={2} style={{ borderRadius: 6, background: "#fff", border: `1px solid ${tone.bd}` }}>
+                    <Text size="11px" fw={700} c={tone.c}>
+                      {t("wd.workers", { n: w.current.workerCount })}
+                    </Text>
+                  </Box>
+                )}
+                {w.current.sehs.map((s) => (
+                  <Box key={s} px={8} py={2} style={{ borderRadius: 6, background: "#fff", border: `1px solid ${tone.bd}` }}>
+                    <Text size="11px" fw={700} c={tone.c}>
+                      {t("wd.sehShort", { n: s })}
+                    </Text>
+                  </Box>
+                ))}
                 {w.current.note && (
-                  <Box
-                    px={9}
-                    py={3}
-                    style={{
-                      borderRadius: 6,
-                      background: "#fff",
-                      border: `1px solid ${tone.bd}`,
-                      flex: "none",
-                    }}
-                  >
+                  <Box px={8} py={2} style={{ borderRadius: 6, background: "#fff", border: `1px solid ${tone.bd}` }}>
                     <Text size="11px" fw={700} c={tone.c}>
                       {w.current.note}
                     </Text>
                   </Box>
                 )}
               </Group>
+
+              {/* план дат текущего этапа */}
+              {w.current.plannedStart && w.current.plannedEnd && (
+                <Group gap={6} mt={7} wrap="nowrap">
+                  <IconCalendarEvent size={14} color={tone.c} />
+                  <Text size="12px" fw={600} c={tone.c}>
+                    {formatDate(w.current.plannedStart)}
+                    {w.current.plannedEnd !== w.current.plannedStart &&
+                      ` – ${formatDate(w.current.plannedEnd)}`}
+                  </Text>
+                </Group>
+              )}
 
               {w.deniedBy?.comment && (
                 <Text size="12.5px" c={tone.c} mt={6} lh={1.5}>
@@ -258,17 +295,27 @@ export function WagonCard({
 
               {w.assignees.length > 0 && (
                 <Box mt={10} pt={10} style={{ borderTop: `1px solid ${tone.bd}` }}>
-                  {w.assignees.map((a) => (
-                    <Group key={a.id} gap={9} wrap="nowrap" py={4}>
-                      <DecisionMark decision={a.decision} />
-                      <Text size="12.5px" fw={600} c="#0f1e3d" truncate style={{ flex: 1, minWidth: 0 }}>
-                        {fio(a)}
-                      </Text>
-                      <Text size="11.5px" c="#8a93a8" style={{ flex: "none" }}>
-                        {a.decidedAt ? formatDateTime(a.decidedAt) : "—"}
-                      </Text>
-                    </Group>
-                  ))}
+                  {w.assignees.map((a) => {
+                    // главное — роль и цех, фамилия мелко: так понятнее, кто согласует
+                    const role = pickName(a.role, lang);
+                    const label = a.seh ? `${role} · ${a.seh}-${t("wd.sehWord")}` : role;
+                    return (
+                      <Group key={a.id} gap={9} wrap="nowrap" py={4} align="flex-start">
+                        <Box mt={1} style={{ flex: "none" }}>
+                          <DecisionMark decision={a.decision} />
+                        </Box>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Text size="12.5px" fw={700} c="#0f1e3d" lh={1.35} style={{ wordBreak: "break-word" }}>
+                            {label || fio(a)}
+                          </Text>
+                          <Text size="11px" c="#8a93a8" lh={1.35}>
+                            {label ? fio(a) : ""}
+                            {a.decidedAt ? `${label ? " · " : ""}${formatDateTime(a.decidedAt)}` : ""}
+                          </Text>
+                        </div>
+                      </Group>
+                    );
+                  })}
                 </Box>
               )}
             </Box>
@@ -276,17 +323,17 @@ export function WagonCard({
 
           <Box style={{ flex: 1, minHeight: 16 }} />
 
-          {/* ── Сроки: создан и когда должен быть готов ── */}
+          {/* ── Сроки: начало работ и когда должен быть готов ── */}
           <Box style={{ height: 1, background: "#eef1f7", marginBottom: 14 }} />
           {/* на узком экране даты встают друг под друга, а не сжимаются */}
           <Group justify="space-between" align="flex-start" gap="md">
-            <Field label={t("wagons.createdAt")}>{formatDateTime(w.createdAt)}</Field>
+            <Field label={t("wagons.startAt")}>{formatDate(w.start)}</Field>
             <div style={{ textAlign: "right" }}>
               <Text size="11px" fw={600} c="#8a93a8" style={{ letterSpacing: 0.4 }}>
                 {t("wagons.deadlineAt")}
               </Text>
               <Text size="14px" fw={700} mt={3} c="#0f1e3d">
-                {formatDateTime(deadline)}
+                {formatDate(w.deadline)}
               </Text>
               <Text size="12px" fw={700} mt={2} c={late ? "#dc2626" : "#0d9488"}>
                 {wdLeft <= 0

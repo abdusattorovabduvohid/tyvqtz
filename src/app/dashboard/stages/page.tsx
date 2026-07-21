@@ -29,7 +29,6 @@ import {
   IconTrash,
   IconClock,
   IconWand,
-  IconUsers,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/client";
@@ -37,7 +36,6 @@ import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
-import { formatDuration, hoursToDays, formatDays } from "@/lib/format";
 
 interface Work {
   id: string;
@@ -45,6 +43,8 @@ interface Work {
   nameRu: string | null;
   nameUz: string;
   hours: number;
+  seh: string | null;
+  workerCount: number | null;
 }
 interface Stage {
   id: string;
@@ -58,10 +58,21 @@ interface Stage {
 }
 
 // строка работы в редакторе — до отправки на сервер
-type WorkRow = { nameUz: string; nameRu: string; hours: number | "" };
+type WorkRow = {
+  nameUz: string;
+  nameRu: string;
+  hours: number | "";
+  seh: string;
+  workerCount: number | "";
+};
 
 const MotionTr = motion.create("tr");
-const emptyRow = (): WorkRow => ({ nameUz: "", nameRu: "", hours: "" });
+const emptyRow = (): WorkRow => ({ nameUz: "", nameRu: "", hours: "", seh: "", workerCount: "" });
+// секунды позиции ↔ рабочие дни (8 ч = 1 день)
+const durToDays = (sec: number) => Math.max(1, Math.round(sec / 3600 / 8));
+// уникальные цехи позиции (из её работ), для колонки списка
+const sehList = (works: { seh: string | null }[]) =>
+  Array.from(new Set(works.map((w) => w.seh).filter((x): x is string => !!x)));
 
 export default function StagesPage() {
   const can = useCan();
@@ -75,12 +86,8 @@ export default function StagesPage() {
   const [number, setNumber] = useState<number | "">("");
   const [nameRu, setNameRu] = useState("");
   const [nameUz, setNameUz] = useState("");
-  const [workerCount, setWorkerCount] = useState<number | "">("");
-  const [note, setNote] = useState("");
+  const [days, setDays] = useState<number | "">(1); // календарный срок позиции
   const [works, setWorks] = useState<WorkRow[]>([emptyRow()]);
-
-  // время позиции не вводится руками — это сумма часов её работ
-  const totalHours = works.reduce((sum, w) => sum + (Number(w.hours) || 0), 0);
 
   async function load() {
     setLoading(true);
@@ -102,8 +109,7 @@ export default function StagesPage() {
     setNumber(stages.length ? Math.max(...stages.map((s) => s.number)) + 1 : 1);
     setNameRu("");
     setNameUz("");
-    setWorkerCount("");
-    setNote("");
+    setDays(1);
     setWorks([emptyRow()]);
     setModalOpen(true);
   }
@@ -113,14 +119,15 @@ export default function StagesPage() {
     setNumber(s.number);
     setNameRu(s.nameRu);
     setNameUz(s.nameUz ?? "");
-    setWorkerCount(s.workerCount ?? "");
-    setNote(s.note ?? "");
+    setDays(durToDays(s.durationSeconds));
     setWorks(
       s.works.length
         ? s.works.map((w) => ({
             nameUz: w.nameUz,
             nameRu: w.nameRu ?? "",
             hours: w.hours,
+            seh: w.seh ?? "",
+            workerCount: w.workerCount ?? "",
           }))
         : [emptyRow()]
     );
@@ -160,12 +167,13 @@ export default function StagesPage() {
         number: Number(number),
         nameUz: nameUz.trim(),
         nameRu: nameRu.trim() || null,
-        workerCount: workerCount === "" ? null : Number(workerCount),
-        note: note.trim() || null,
+        days: Number(days) || 1,
         works: clean.map((w) => ({
           nameUz: w.nameUz.trim(),
           nameRu: w.nameRu.trim() || null,
           hours: Number(w.hours),
+          seh: w.seh.trim() || null,
+          workerCount: w.workerCount === "" ? null : Number(w.workerCount),
         })),
       };
       if (editing) {
@@ -278,10 +286,8 @@ export default function StagesPage() {
                 <Table.Tr>
                   <Table.Th w={70}>{t("stages.col.num")}</Table.Th>
                   <Table.Th>{t("stages.col.name")}</Table.Th>
-                  <Table.Th w={130}>{t("stages.col.duration")}</Table.Th>
                   <Table.Th w={90}>{t("stages.col.days")}</Table.Th>
-                  <Table.Th w={90}>{t("stages.col.workers")}</Table.Th>
-                  <Table.Th w={100}>{t("stages.col.note")}</Table.Th>
+                  <Table.Th w={160}>{t("stages.col.seh")}</Table.Th>
                   <Table.Th w={50}></Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -306,6 +312,11 @@ export default function StagesPage() {
                         </Text>
                         <Text size="xs" c="dimmed">
                           {t("stages.worksCount", { n: s.works.length })}
+                          {/* людей на позиции — сумма по работам */}
+                          {(() => {
+                            const n = s.works.reduce((a, w) => a + (w.workerCount ?? 0), 0);
+                            return n ? ` · ${t("wd.workers", { n })}` : "";
+                          })()}
                         </Text>
                       </Table.Td>
                       <Table.Td>
@@ -314,32 +325,23 @@ export default function StagesPage() {
                           color="grape"
                           leftSection={<IconClock size={13} />}
                         >
-                          {formatDuration(s.durationSeconds, lang)}
+                          {t("stages.daysValue", { n: durToDays(s.durationSeconds) })}
                         </Badge>
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm" c="dimmed">
-                          {t("stages.daysValue", {
-                            n: formatDays(hoursToDays(s.durationSeconds / 3600)),
-                          })}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        {s.workerCount ? (
-                          <Group gap={5}>
-                            <IconUsers size={14} color="var(--mantine-color-gray-6)" />
-                            <Text size="sm">{s.workerCount}</Text>
-                          </Group>
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs" c="dimmed" truncate>
-                          {s.note || "—"}
-                        </Text>
+                        <Group gap={4}>
+                          {sehList(s.works).length ? (
+                            sehList(s.works).map((sh) => (
+                              <Badge key={sh} size="xs" variant="light" color="steel">
+                                {t("wd.sehShort", { n: sh })}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Text size="sm" c="dimmed">
+                              —
+                            </Text>
+                          )}
+                        </Group>
                       </Table.Td>
                       <Table.Td>
                         {(can("stages", "update") || can("stages", "delete")) && (
@@ -387,6 +389,7 @@ export default function StagesPage() {
         size="xl"
       >
         <Stack>
+          {/* № позиции и её календарный срок в рабочих днях */}
           <Group grow align="flex-start">
             <NumberInput
               label={t("stages.number")}
@@ -396,17 +399,12 @@ export default function StagesPage() {
               onChange={(v) => setNumber(typeof v === "number" ? v : "")}
             />
             <NumberInput
-              label={t("stages.workers")}
-              placeholder="5"
+              label={t("stages.days")}
+              description={t("stages.daysHint")}
+              withAsterisk
               min={1}
-              value={workerCount}
-              onChange={(v) => setWorkerCount(typeof v === "number" ? v : "")}
-            />
-            <TextInput
-              label={t("stages.note")}
-              placeholder={t("stages.notePlaceholder")}
-              value={note}
-              onChange={(e) => setNote(e.currentTarget.value)}
+              value={days}
+              onChange={(v) => setDays(typeof v === "number" ? v : "")}
             />
           </Group>
 
@@ -429,48 +427,73 @@ export default function StagesPage() {
             {t("stages.worksHint")}
           </Text>
 
-          <Stack gap={6}>
+          {/* каждая работа — блок, поля переносятся на телефоне */}
+          <Stack gap={10}>
             {works.map((w, i) => (
-              <Group key={i} gap="xs" wrap="nowrap" align="flex-end">
-                <Text size="xs" c="dimmed" fw={700} w={16} ta="right" mb={8}>
-                  {i + 1}
-                </Text>
-                <TextInput
-                  placeholder={t("stages.workName") + " (" + t("field.uz") + ")"}
-                  value={w.nameUz}
-                  onChange={(e) => setWork(i, { nameUz: e.currentTarget.value })}
-                  style={{ flex: 3 }}
-                />
-                <TextInput
-                  placeholder={t("stages.workName") + " (" + t("field.ru") + ")"}
-                  value={w.nameRu}
-                  onChange={(e) => setWork(i, { nameRu: e.currentTarget.value })}
-                  style={{ flex: 3 }}
-                />
-                <NumberInput
-                  placeholder={t("stages.hours")}
-                  min={0}
-                  step={0.5}
-                  decimalScale={2}
-                  value={w.hours}
-                  onChange={(v) => setWork(i, { hours: typeof v === "number" ? v : "" })}
-                  w={110}
-                />
-                <ActionIcon
-                  color="red"
-                  variant="subtle"
-                  mb={4}
-                  disabled={works.length === 1}
-                  onClick={() => setWorks((p) => p.filter((_, j) => j !== i))}
-                  aria-label={t("common.delete")}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Group>
+              <Box
+                key={i}
+                p="sm"
+                style={{
+                  borderRadius: 10,
+                  border: "1px solid var(--mantine-color-gray-2)",
+                  background: "var(--mantine-color-gray-0)",
+                }}
+              >
+                <Group justify="space-between" mb={6}>
+                  <Text size="xs" fw={700} c="dimmed">
+                    {t("stages.workNo", { n: i + 1 })}
+                  </Text>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    size="sm"
+                    disabled={works.length === 1}
+                    onClick={() => setWorks((p) => p.filter((_, j) => j !== i))}
+                    aria-label={t("common.delete")}
+                  >
+                    <IconTrash size={15} />
+                  </ActionIcon>
+                </Group>
+                <Stack gap={7}>
+                  <TextInput
+                    placeholder={t("stages.workName") + " (" + t("field.uz") + ")"}
+                    value={w.nameUz}
+                    onChange={(e) => setWork(i, { nameUz: e.currentTarget.value })}
+                  />
+                  <TextInput
+                    placeholder={t("stages.workName") + " (" + t("field.ru") + ")"}
+                    value={w.nameRu}
+                    onChange={(e) => setWork(i, { nameRu: e.currentTarget.value })}
+                  />
+                  <Group grow wrap="wrap">
+                    <NumberInput
+                      label={t("stages.hours")}
+                      min={0}
+                      step={0.5}
+                      decimalScale={2}
+                      value={w.hours}
+                      onChange={(v) => setWork(i, { hours: typeof v === "number" ? v : "" })}
+                    />
+                    <NumberInput
+                      label={t("stages.workers")}
+                      placeholder="4"
+                      min={1}
+                      value={w.workerCount}
+                      onChange={(v) => setWork(i, { workerCount: typeof v === "number" ? v : "" })}
+                    />
+                    <TextInput
+                      label={t("stages.seh")}
+                      placeholder="2"
+                      value={w.seh}
+                      onChange={(e) => setWork(i, { seh: e.currentTarget.value })}
+                    />
+                  </Group>
+                </Stack>
+              </Box>
             ))}
           </Stack>
 
-          <Group justify="space-between">
+          <Group justify="space-between" wrap="wrap" gap="sm">
             <Button
               variant="light"
               size="compact-sm"
@@ -480,7 +503,7 @@ export default function StagesPage() {
               {t("stages.addWorkBtn")}
             </Button>
 
-            {/* итог считается сам — как «Всего» в бумажном плане */}
+            {/* срок позиции = введённые дни */}
             <Box
               px="md"
               py={7}
@@ -490,10 +513,7 @@ export default function StagesPage() {
               }}
             >
               <Text size="sm" fw={700} c="grape.8">
-                {t("stages.total", {
-                  h: Math.round(totalHours * 100) / 100,
-                  d: formatDays(hoursToDays(totalHours)),
-                })}
+                {t("stages.daysValue", { n: days || 0 })}
               </Text>
             </Box>
           </Group>

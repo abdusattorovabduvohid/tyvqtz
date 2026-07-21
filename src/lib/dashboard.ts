@@ -2,7 +2,7 @@
 // где сейчас каждый вагон. Всё считается из одного запроса к вагонам.
 
 import { computeWagonStatus, computeStageState } from "./wagon";
-import { workdaysRemaining } from "./format";
+import { wagonSchedule, businessDaysUntil } from "./format";
 
 // Порог «скоро дедлайн» — рабочих дней из нормы на вагон.
 export const DEADLINE_WARN_DAYS = 5;
@@ -86,6 +86,8 @@ export interface WagonLike {
   number: string;
   creationStatus: string;
   createdAt: Date;
+  plannedStart: Date | null;
+  plannedEnd: Date | null;
   wagonType: { nameRu: string | null; nameUz: string };
   stages: StageLike[];
 }
@@ -148,7 +150,12 @@ export function buildAttention(wagons: WagonLike[], now = Date.now()): Attention
 
     const allDone = w.stages.length > 0 && w.stages.every((s) => s.status === "done");
     if (allDone) continue;
-    const daysLeft = workdaysRemaining(w.createdAt, undefined, new Date(now));
+    // срок = ручная дата сдачи или конец плана этапов
+    const { end } = wagonSchedule(
+      w.plannedStart ?? w.createdAt,
+      w.stages.map((s) => s.durationSeconds)
+    );
+    const daysLeft = businessDaysUntil(w.plannedEnd ?? end, new Date(now));
     if (daysLeft <= DEADLINE_WARN_DAYS) {
       items.push({ kind: "deadline", wagon: refOf(w), daysLeft });
     }

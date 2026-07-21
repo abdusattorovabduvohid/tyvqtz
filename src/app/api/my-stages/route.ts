@@ -91,6 +91,7 @@ export async function GET() {
         startedBy: s.startedBy,
         finishedAt: s.finishedAt,
         finishedBy: s.finishedBy,
+        finishComment: s.finishComment,
         deadline: state.deadline,
         remainingMs: state.remainingMs,
         overdue: state.overdue,

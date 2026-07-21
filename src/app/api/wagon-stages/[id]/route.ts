@@ -200,12 +200,22 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       if (stage.status !== "in_progress")
         throw new ApiError(400, "Этап не запущен");
+      // При завершении обязательна причина отклонения от норматива —
+      // и когда просрочено, и когда завершают раньше срока.
+      const text = (comment ?? "").trim();
+      if (text.length < 3) {
+        throw new ApiError(
+          400,
+          "Укажите причину: почему этап завершён с отклонением от норматива"
+        );
+      }
       const updated = await prisma.wagonStage.update({
         where: { id: stage.id },
         data: {
           status: "done",
           finishedAt: new Date(),
           finishedById: user.id,
+          finishComment: text,
         },
       });
       return NextResponse.json({ stage: updated });

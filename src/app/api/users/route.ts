@@ -10,6 +10,7 @@ const createSchema = z.object({
   lastName: z.string().min(1, "Введите фамилию"),
   middleName: z.string().optional().nullable(),
   photo: z.string().optional().nullable(),
+  seh: z.string().optional().nullable(), // номер цеха работника
   password: z.string().min(4, "Пароль минимум 4 символа"),
   roleId: z.string().min(1, "Выберите роль"),
 });
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
         lastName: data.lastName,
         middleName: data.middleName || null,
         photo: data.photo || null,
+        seh: data.seh?.trim() || null,
         passwordHash: await hashPassword(data.password),
         roleId: data.roleId,
       },

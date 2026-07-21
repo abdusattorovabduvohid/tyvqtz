@@ -176,9 +176,16 @@ export default function UsersPage() {
                             {u.lastName?.[0]}
                           </Avatar>
                           <div>
-                            <Text fw={600} size="sm">
-                              {u.lastName} {u.firstName}
-                            </Text>
+                            <Group gap={6} wrap="nowrap">
+                              <Text fw={600} size="sm">
+                                {u.lastName} {u.firstName}
+                              </Text>
+                              {u.seh && (
+                                <Badge size="xs" variant="light" color="steel">
+                                  {t("wd.sehShort", { n: u.seh })}
+                                </Badge>
+                              )}
+                            </Group>
                             {u.middleName && (
                               <Text size="xs" c="dimmed">
                                 {u.middleName}

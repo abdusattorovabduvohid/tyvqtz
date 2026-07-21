@@ -26,6 +26,7 @@ export interface UserRow {
   lastName: string;
   middleName: string | null;
   photo: string | null;
+  seh: string | null;
   isActive: boolean;
   role: { id: string; nameRu: string; nameUz: string | null };
 }
@@ -56,6 +57,7 @@ export function UserFormModal({
       firstName: "",
       lastName: "",
       middleName: "",
+      seh: "",
       password: "",
       roleId: "",
     },
@@ -78,6 +80,7 @@ export function UserFormModal({
           firstName: initial.firstName,
           lastName: initial.lastName,
           middleName: initial.middleName ?? "",
+          seh: initial.seh ?? "",
           password: "",
           roleId: initial.role.id,
         });
@@ -97,6 +100,7 @@ export function UserFormModal({
         firstName: values.firstName,
         lastName: values.lastName,
         middleName: values.middleName || null,
+        seh: values.seh?.trim() || null,
         photo: photo || null,
         roleId: values.roleId,
       };
@@ -161,11 +165,19 @@ export function UserFormModal({
                 {...form.getInputProps("lastName")}
               />
             </Group>
-            <TextInput
-              label={t("users.middleName")}
-              placeholder="Иванович"
-              {...form.getInputProps("middleName")}
-            />
+            <Group grow>
+              <TextInput
+                label={t("users.middleName")}
+                placeholder="Иванович"
+                {...form.getInputProps("middleName")}
+              />
+              <TextInput
+                label={t("users.seh")}
+                placeholder="2"
+                description={t("users.sehHint")}
+                {...form.getInputProps("seh")}
+              />
+            </Group>
 
             {!editing && (
               <TextInput

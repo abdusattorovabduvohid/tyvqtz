@@ -96,6 +96,91 @@ export function wagonDeadline(
   return d;
 }
 
+// ─── Календарный план этапов ───
+// Этапы идут последовательно, один за другим. Выходные (сб/вс) пропускаются:
+// если старт выпадает на выходной — переносится на понедельник.
+
+function isWeekend(d: Date): boolean {
+  const g = d.getDay(); // 0 = вс, 6 = сб
+  return g === 0 || g === 6;
+}
+
+// Ближайший рабочий день В ЭТОТ день или позже.
+export function firstWorkday(from: string | Date): Date {
+  const d = new Date(from);
+  while (isWeekend(d)) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+// Следующий рабочий день строго ПОСЛЕ d.
+function nextWorkday(d: Date): Date {
+  const r = new Date(d);
+  do {
+    r.setDate(r.getDate() + 1);
+  } while (isWeekend(r));
+  return r;
+}
+
+// Сколько рабочих дней занимает этап: целое число, минимум 1.
+// 8 ч = 1 день, 16 ч = 2 дня, 1–7 ч тоже занимают отдельный день.
+export function stageWorkdays(durationSeconds: number): number {
+  return Math.max(1, Math.ceil(durationSeconds / 3600 / HOURS_PER_DAY));
+}
+
+export interface StagePlan {
+  start: Date;
+  end: Date;
+  days: number;
+}
+
+// Рабочих дней от сегодня до даты `to`. Отрицательное — если срок в прошлом.
+export function businessDaysUntil(to: string | Date, now: Date = new Date()): number {
+  const end = new Date(to);
+  const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const b = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const [lo, hi, sign] = b >= a ? [a, b, 1] : [b, a, -1];
+  const cur = new Date(lo);
+  let count = 0;
+  while (cur < hi) {
+    cur.setDate(cur.getDate() + 1);
+    const d = cur.getDay();
+    if (d !== 0 && d !== 6) count += 1;
+  }
+  return sign * count;
+}
+
+// План дат для цепочки этапов: этап N начинается на следующий рабочий день
+// после конца этапа N-1. Первый — с даты создания вагона (или ближайшего
+// рабочего дня). durationsSeconds — в порядке номеров этапов.
+export function scheduleStages(
+  createdAt: string | Date,
+  durationsSeconds: number[]
+): StagePlan[] {
+  const out: StagePlan[] = [];
+  let cursor = firstWorkday(createdAt);
+  for (const sec of durationsSeconds) {
+    const days = stageWorkdays(sec);
+    const start = new Date(cursor);
+    let end = new Date(start);
+    for (let i = 1; i < days; i++) end = nextWorkday(end);
+    out.push({ start, end, days });
+    cursor = nextWorkday(end);
+  }
+  return out;
+}
+
+// Сводка по вагону: план дат, дата окончания и всего рабочих дней.
+// start — «Ish boshlanish sanasi» (или дата создания, если не задана).
+export function wagonSchedule(
+  start: string | Date,
+  durationsSeconds: number[]
+): { plan: StagePlan[]; end: Date; totalDays: number } {
+  const plan = scheduleStages(start, durationsSeconds);
+  const end = plan.length ? plan[plan.length - 1].end : firstWorkday(start);
+  const totalDays = durationsSeconds.reduce((a, s) => a + stageWorkdays(s), 0);
+  return { plan, end, totalDays };
+}
+
 // Обратный отсчёт из миллисекунд: "01:23:45" или "23:45".
 export function formatCountdown(ms: number): string {
   const neg = ms < 0;

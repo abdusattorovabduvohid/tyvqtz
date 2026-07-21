@@ -35,6 +35,7 @@ model User {
   lastName     String // фамилия
   middleName   String? // отчество
   photo        String? // путь к фотографии
+  seh          String? // номер цеха работника (2, 8, 15, 28 …); у админов пусто
   passwordHash String
   isActive     Boolean  @default(true)
   roleId       String
@@ -88,6 +89,8 @@ model StageWork {
   nameUz  String
   nameRu  String?
   hours   Float // «Время работа»: 12ч, 2ч …
+  seh     String? // цех этой работы — в бумаге у каждой работы свой (№8, №2 …)
+  workerCount Int? // количество работников на работу
 
   @@unique([stageId, number])
 }
@@ -102,6 +105,11 @@ model Wagon {
   status      String    @default("pending") // pending | in_progress | done
   // статус подтверждения создания вагона (1-я фаза согласования)
   creationStatus String @default("approved") // pending | approved | rejected
+  // «Ish boshlanish sanasi» из бумаги — задаётся при создании.
+  // От неё считается план дат этапов. Пусто → берём createdAt.
+  plannedStart DateTime?
+  // «Ish tugash sanasi» — обычно считается автоматически, но можно задать вручную.
+  plannedEnd   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -143,6 +151,9 @@ model WagonStage {
   finishedAt      DateTime?
   finishedById    String? // кто завершил этап
   finishedBy      User?     @relation("StageFinishedBy", fields: [finishedById], references: [id])
+  // причина отклонения от норматива — обязательна при завершении
+  // (просрочено — почему поздно; раньше срока — почему раньше)
+  finishComment   String?
 
   assignments WagonStageAssignment[]
   works       WagonStageWork[]
@@ -160,6 +171,8 @@ model WagonStageWork {
   nameUz       String
   nameRu       String?
   hours        Float
+  seh          String?
+  workerCount  Int?
 
   @@unique([wagonStageId, number])
 }

@@ -41,6 +41,7 @@ import {
   IconCalendar,
   IconCalendarClock,
   IconCalendarDue,
+  IconCalendarEvent,
 } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/client";
@@ -51,10 +52,10 @@ import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
 import {
   formatDuration,
+  formatDate,
   formatDateTime,
-  workdaysRemaining,
-  wagonDeadline,
-  WAGON_WORKDAYS,
+  businessDaysUntil,
+  wagonSchedule,
 } from "@/lib/format";
 
 interface Assignee {
@@ -63,6 +64,8 @@ interface Assignee {
   lastName: string;
   middleName: string | null;
   photo: string | null;
+  seh: string | null;
+  role: { nameRu: string; nameUz: string | null };
   decision: "pending" | "approved" | "denied";
   comment: string | null;
   decidedAt: string | null;
@@ -75,6 +78,8 @@ interface StageWork {
   nameRu: string | null;
   nameUz: string;
   hours: number;
+  seh: string | null;
+  workerCount: number | null;
 }
 interface Stage {
   id: string;
@@ -90,6 +95,7 @@ interface Stage {
   startedBy: { firstName: string; lastName: string; middleName: string | null } | null;
   finishedAt: string | null;
   finishedBy: { firstName: string; lastName: string; middleName: string | null } | null;
+  finishComment: string | null;
   deadline: number | null;
   approval: { total: number; approved: number; denied: number; allApproved: boolean };
   assignees: Assignee[];
@@ -100,6 +106,8 @@ interface CreationApprover {
   lastName: string;
   middleName: string | null;
   photo: string | null;
+  seh: string | null;
+  role: { nameRu: string; nameUz: string | null };
   order: number;
   decision: "pending" | "approved" | "denied";
   comment: string | null;
@@ -115,6 +123,8 @@ interface WagonDetail {
   creationStatus: "pending" | "approved" | "rejected";
   creationApprovers: CreationApprover[];
   createdAt: string;
+  plannedStart: string | null;
+  plannedEnd: string | null;
   stages: Stage[];
 }
 
@@ -149,6 +159,10 @@ export default function WagonDetailPage() {
   // отказ (этап)
   const [denyStage, setDenyStage] = useState<Stage | null>(null);
   const [denyComment, setDenyComment] = useState("");
+  // завершение требует причину отклонения от норматива
+  const [finishStage, setFinishStage] = useState<Stage | null>(null);
+  const [finishComment, setFinishComment] = useState("");
+  const [finishSaving, setFinishSaving] = useState(false);
   const [denySaving, setDenySaving] = useState(false);
 
   // отказ (создание вагона)
@@ -250,6 +264,22 @@ export default function WagonDetailPage() {
     }
   }
 
+  async function submitFinish() {
+    if (!finishStage) return;
+    setFinishSaving(true);
+    const ok = await patch(
+      finishStage.id,
+      { action: "finish", comment: finishComment },
+      finishStage.id + "finish",
+      t("wd.finished")
+    );
+    setFinishSaving(false);
+    if (ok) {
+      setFinishStage(null);
+      setFinishComment("");
+    }
+  }
+
   if (loading) {
     return (
       <Center py={100}>
@@ -267,6 +297,14 @@ export default function WagonDetailPage() {
 
   // 1-я фаза: согласование создания
   const wagonActive = wagon.creationStatus === "approved";
+
+  // Календарный план дат этапов: считаем от «Ish boshlanish sanasi».
+  const scheduleStart = wagon.plannedStart ?? wagon.createdAt;
+  const { plan: stagePlan, end: scheduleEnd } = wagonSchedule(
+    scheduleStart,
+    wagon.stages.map((s) => s.durationSeconds)
+  );
+  const deadline = wagon.plannedEnd ?? scheduleEnd;
   const myCreationIdx = wagon.creationApprovers.findIndex(
     (a) => a.id === user.id
   );
@@ -320,32 +358,27 @@ export default function WagonDetailPage() {
                 <Group gap={5}>
                   <IconCalendar size={15} color="var(--mantine-color-gray-6)" />
                   <Text size="xs" c="dimmed">
-                    {t("wagons.createdAt")}: {formatDateTime(wagon.createdAt)}
+                    {t("wagons.startAt")}: {formatDate(scheduleStart)}
                   </Text>
                 </Group>
                 {(() => {
-                  const wdLeft = workdaysRemaining(wagon.createdAt);
+                  const wdLeft = businessDaysUntil(deadline);
                   const wdColor =
                     wdLeft <= 0 ? "red" : wdLeft <= 5 ? "orange" : "teal";
                   return (
                     <>
-                      <Tooltip
-                        label={t("wagons.deadlineHint", { n: WAGON_WORKDAYS })}
-                        withArrow
-                      >
-                        <Group gap={5}>
-                          <IconCalendarDue
-                            size={15}
-                            color="var(--mantine-color-gray-6)"
-                          />
-                          <Text size="xs" c="dimmed">
-                            {t("wagons.deadlineAt")}:{" "}
-                            <Text span fw={600} c={wdColor}>
-                              {formatDateTime(wagonDeadline(wagon.createdAt))}
-                            </Text>
+                      <Group gap={5}>
+                        <IconCalendarDue
+                          size={15}
+                          color="var(--mantine-color-gray-6)"
+                        />
+                        <Text size="xs" c="dimmed">
+                          {t("wagons.deadlineAt")}:{" "}
+                          <Text span fw={600} c={wdColor}>
+                            {formatDate(deadline)}
                           </Text>
-                        </Group>
-                      </Tooltip>
+                        </Text>
+                      </Group>
                       <Badge
                         variant="light"
                         color={wdColor}
@@ -353,10 +386,7 @@ export default function WagonDetailPage() {
                       >
                         {wdLeft <= 0
                           ? t("wagons.overdueDays", { n: Math.abs(wdLeft) })
-                          : t("wagons.workdaysLeft", {
-                              n: wdLeft,
-                              total: WAGON_WORKDAYS,
-                            })}
+                          : t("wagons.card.leftDays", { n: wdLeft })}
                       </Badge>
                     </>
                   );
@@ -394,7 +424,12 @@ export default function WagonDetailPage() {
             >
               <IconLock size={16} />
             </ThemeIcon>
-            <Text fw={700}>{t("wd.creationTitle")}</Text>
+            <div>
+              <Text fw={700}>{t("wd.approvalSheet")}</Text>
+              <Text size="xs" c="dimmed">
+                {t("wd.approvalSheet.sub")}
+              </Text>
+            </div>
           </Group>
 
           <Alert
@@ -420,17 +455,22 @@ export default function WagonDetailPage() {
                     {a.lastName?.[0]}
                   </Avatar>
                   <div style={{ minWidth: 0 }}>
-                    <Text size="sm" truncate>
-                      {fio(a)}
-                      {a.id === user.id && (
-                        <Text span c="dimmed" size="xs">
-                          {" "}
-                          {t("wd.you")}
-                        </Text>
+                    <Group gap={5} wrap="nowrap">
+                      <Text size="13px" fw={700} c="#14264f" truncate>
+                        {pickName(a.role, lang)}
+                      </Text>
+                      {a.seh && (
+                        <Badge size="xs" variant="light" color="steel" style={{ flex: "none" }}>
+                          {t("wd.sehShort", { n: a.seh })}
+                        </Badge>
                       )}
+                    </Group>
+                    <Text size="11px" c="dimmed" truncate>
+                      {fio(a)}
+                      {a.id === user.id && ` · ${t("wd.you")}`}
                     </Text>
                     {a.decidedAt && (
-                      <Text size="xs" c="dimmed">
+                      <Text size="10px" c="dimmed">
                         {formatDateTime(a.decidedAt)}
                         {a.decision === "denied" && a.comment
                           ? ` · ${a.comment}`
@@ -510,15 +550,17 @@ export default function WagonDetailPage() {
         </Card>
       )}
 
-      <Card p="xl" style={{ opacity: wagonActive ? 1 : 0.55 }}>
+      {/* на телефоне отступы и маркеры меньше — иначе текст этапов не влезает */}
+      <Card p={{ base: "xs", sm: "xl" }} style={{ opacity: wagonActive ? 1 : 0.55 }}>
         <Timeline
           active={activeIndex === -1 ? total : activeIndex}
-          bulletSize={36}
+          bulletSize={28}
           lineWidth={2}
           color="steel"
         >
-          {wagon.stages.map((s) => {
+          {wagon.stages.map((s, stageIdx) => {
             const statusColor = STATUS_COLOR[s.status];
+            const plan = stagePlan[stageIdx];
             const prevDone =
               s.number === 1 ||
               wagon.stages.find((x) => x.number === s.number - 1)?.status === "done";
@@ -560,8 +602,9 @@ export default function WagonDetailPage() {
               >
                 <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
                   <Card withBorder p="md" radius="md">
+                    {/* колонки шире 260px не сжимаются, а переносятся — на телефоне встают друг под друга */}
                     <Group justify="space-between" wrap="wrap" gap="sm" align="flex-start">
-                      <div style={{ flex: 1, minWidth: 240 }}>
+                      <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                         <Group gap="xs" mb={4}>
                           <Text fw={700}>
                             {t("wd.stage", {
@@ -577,7 +620,14 @@ export default function WagonDetailPage() {
                           {t("wd.norm", {
                             dur: formatDuration(s.durationSeconds, lang),
                           })}
-                          {s.workerCount ? ` · ${t("wd.workers", { n: s.workerCount })}` : ""}
+                          {/* людей на позиции — сумма по работам: они идут параллельно по цехам */}
+                          {(() => {
+                            const n =
+                              s.works.reduce((a, w) => a + (w.workerCount ?? 0), 0) ||
+                              s.workerCount ||
+                              0;
+                            return n ? ` · ${t("wd.workers", { n })}` : "";
+                          })()}
                           {s.note ? ` · ${s.note}` : ""}
                           {s.approval.total > 0 &&
                             ` · ${t("wd.approvals", {
@@ -585,6 +635,19 @@ export default function WagonDetailPage() {
                               t: s.approval.total,
                             })}`}
                         </Text>
+
+                        {/* План: когда этап должен идти по календарю */}
+                        {plan && (
+                          <Group gap={5} mt={4} wrap="nowrap">
+                            <IconCalendarEvent size={13} color="var(--mantine-color-steel-6)" />
+                            <Text size="xs" c="steel.7" fw={600}>
+                              {t("wd.plan")}:{" "}
+                              {formatDate(plan.start)}
+                              {formatDate(plan.end) !== formatDate(plan.start) &&
+                                ` – ${formatDate(plan.end)}`}
+                            </Text>
+                          </Group>
+                        )}
 
                         {/* Работы позиции — из чего складывается её время */}
                         {s.works.length > 0 && (
@@ -596,17 +659,32 @@ export default function WagonDetailPage() {
                               background: "var(--mantine-color-gray-0)",
                             }}
                           >
+                            {/* на телефоне значки уходят под название, а не сжимают его */}
                             {s.works.map((w) => (
-                              <Group key={w.id} gap={8} wrap="nowrap" py={2}>
-                                <Text size="10px" c="dimmed" fw={700} w={12} ta="right">
+                              <Group key={w.id} gap={8} wrap="nowrap" py={4} align="flex-start">
+                                <Text size="10px" c="dimmed" fw={700} w={12} ta="right" mt={2}>
                                   {w.number}
                                 </Text>
-                                <Text size="xs" style={{ flex: 1 }} truncate>
-                                  {pickName(w, lang)}
-                                </Text>
-                                <Text size="xs" c="dimmed" fw={600} style={{ flex: "none" }}>
-                                  {t("wd.workHours", { h: w.hours })}
-                                </Text>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <Text size="xs" lh={1.4} style={{ wordBreak: "break-word" }}>
+                                    {pickName(w, lang)}
+                                  </Text>
+                                  <Group gap={6} mt={4} wrap="wrap">
+                                    {w.seh && (
+                                      <Badge size="xs" variant="light" color="steel">
+                                        {t("wd.sehShort", { n: w.seh })}
+                                      </Badge>
+                                    )}
+                                    {!!w.workerCount && (
+                                      <Badge size="xs" variant="light" color="indigo">
+                                        {t("wd.workers", { n: w.workerCount })}
+                                      </Badge>
+                                    )}
+                                    <Badge size="xs" variant="light" color="gray">
+                                      {t("wd.workHours", { h: w.hours })}
+                                    </Badge>
+                                  </Group>
+                                </div>
                               </Group>
                             ))}
                           </Box>
@@ -644,6 +722,41 @@ export default function WagonDetailPage() {
                           </Group>
                         )}
 
+                        {/* Отклонение от норматива: план vs факт + причина */}
+                        {s.status === "done" &&
+                          s.finishedAt &&
+                          s.deadline &&
+                          (() => {
+                            const late =
+                              new Date(s.finishedAt).getTime() > s.deadline;
+                            return (
+                              <Alert
+                                mt="xs"
+                                variant="light"
+                                color={late ? "red" : "teal"}
+                                icon={<IconCalendarClock size={15} />}
+                                title={late ? t("wd.finishLate") : t("wd.finishEarly")}
+                              >
+                                <Text size="xs">
+                                  {t("wd.finishPlanned")}:{" "}
+                                  <Text span fw={600}>
+                                    {formatDateTime(new Date(s.deadline))}
+                                  </Text>
+                                  {" · "}
+                                  {t("wd.finishFact")}:{" "}
+                                  <Text span fw={700} c={late ? "red" : "teal"}>
+                                    {formatDateTime(s.finishedAt)}
+                                  </Text>
+                                </Text>
+                                {s.finishComment && (
+                                  <Text size="xs" mt={4}>
+                                    {t("wd.finishWhy")}: «{s.finishComment}»
+                                  </Text>
+                                )}
+                              </Alert>
+                            );
+                          })()}
+
                         {/* Причина блокировки */}
                         {s.status === "blocked" && deniers.length > 0 && (
                           <Alert
@@ -669,7 +782,7 @@ export default function WagonDetailPage() {
                       </div>
 
                       {/* Правая колонка: ответственные + таймер + действия */}
-                      <Stack gap="sm" align="stretch" style={{ minWidth: 240 }}>
+                      <Stack gap="sm" align="stretch" style={{ flex: "1 1 240px", minWidth: 0 }}>
                         {/* Ответственные и чекбоксы разрешений */}
                         {s.assignees.length === 0 ? (
                           <Text size="xs" c="dimmed" ta="right">
@@ -698,40 +811,34 @@ export default function WagonDetailPage() {
                                     {a.lastName?.[0]}
                                   </Avatar>
                                   <div style={{ minWidth: 0 }}>
+                                    {/* роль и цех — крупно, они важнее имени */}
                                     <Group gap={5} wrap="nowrap">
-                                      <Text size="sm" truncate>
-                                        {fio(a)}
-                                        {a.id === user.id && (
-                                          <Text span c="dimmed" size="xs">
-                                            {" "}
-                                            {t("wd.you")}
-                                          </Text>
-                                        )}
+                                      <Text size="13px" fw={700} c="#14264f" truncate>
+                                        {pickName(a.role, lang)}
                                       </Text>
-                                      {/* жмёт «Старт» / «Завершить» */}
+                                      {a.seh && (
+                                        <Badge size="xs" variant="light" color="steel" style={{ flex: "none" }}>
+                                          {t("wd.sehShort", { n: a.seh })}
+                                        </Badge>
+                                      )}
                                       {a.canExecute && (
                                         <Tooltip label={t("wd.executorHint")} withArrow>
-                                          <ThemeIcon
-                                            color="blue"
-                                            variant="light"
-                                            size={16}
-                                            radius="xl"
-                                          >
+                                          <ThemeIcon color="blue" variant="light" size={16} radius="xl">
                                             <IconPlayerPlay size={9} />
                                           </ThemeIcon>
                                         </Tooltip>
                                       )}
                                     </Group>
+                                    <Text size="11px" c="dimmed" truncate>
+                                      {fio(a)}
+                                      {a.id === user.id && ` · ${t("wd.you")}`}
+                                    </Text>
                                     {a.decidedAt &&
                                       (a.decision === "approved" ||
                                         a.decision === "denied") && (
                                         <Text
                                           size="10px"
-                                          c={
-                                            a.decision === "denied"
-                                              ? "red"
-                                              : "teal"
-                                          }
+                                          c={a.decision === "denied" ? "red" : "teal"}
                                           lh={1.15}
                                         >
                                           {formatDateTime(a.decidedAt)}
@@ -845,16 +952,17 @@ export default function WagonDetailPage() {
                             </Badge>
                           )}
 
-                          {/* Завершение */}
+                          {/* Завершение — через окно с причиной */}
                           {canAct && running && (
                             <Button
                               size="xs"
                               color="teal"
                               leftSection={<IconCheck size={14} />}
                               loading={busy === s.id + "finish"}
-                              onClick={() =>
-                                patch(s.id, { action: "finish" }, s.id + "finish", t("wd.finished"))
-                              }
+                              onClick={() => {
+                                setFinishStage(s);
+                                setFinishComment("");
+                              }}
                             >
                               {t("wd.finish")}
                             </Button>
@@ -916,6 +1024,57 @@ export default function WagonDetailPage() {
             </Button>
             <Button color="red" onClick={submitDeny} loading={denySaving}>
               {t("wd.deny")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Модалка завершения — обязательна причина отклонения от норматива */}
+      <Modal
+        opened={!!finishStage}
+        onClose={() => setFinishStage(null)}
+        title={finishStage ? t("wd.finishTitle", { number: finishStage.number }) : ""}
+      >
+        <Stack>
+          {finishStage &&
+            (() => {
+              // просрочено или раньше срока — сравниваем план с текущим моментом
+              const planned = finishStage.deadline;
+              const late = planned != null && Date.now() > planned;
+              return (
+                <Alert
+                  color={late ? "red" : "teal"}
+                  variant="light"
+                  icon={<IconAlertTriangle size={16} />}
+                  title={late ? t("wd.finishLate") : t("wd.finishEarly")}
+                >
+                  {planned && (
+                    <Text size="sm">
+                      {t("wd.finishPlanned")}:{" "}
+                      <Text span fw={600}>
+                        {formatDateTime(new Date(planned))}
+                      </Text>
+                    </Text>
+                  )}
+                  <Text size="sm">{t("wd.finishReasonHint")}</Text>
+                </Alert>
+              );
+            })()}
+          <Textarea
+            label={t("wd.finishReason")}
+            placeholder={t("wd.finishPlaceholder")}
+            minRows={3}
+            autosize
+            withAsterisk
+            value={finishComment}
+            onChange={(e) => setFinishComment(e.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setFinishStage(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button color="teal" onClick={submitFinish} loading={finishSaving}>
+              {t("wd.finish")}
             </Button>
           </Group>
         </Stack>

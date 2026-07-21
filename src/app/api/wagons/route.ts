@@ -3,12 +3,16 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
 import { computeWagonStatus } from "@/lib/wagon";
+import { wagonSchedule, stageWorkdays, businessDaysUntil } from "@/lib/format";
 
 const createSchema = z.object({
   nameUz: z.string().min(1, "Введите название вагона"),
   nameRu: z.string().optional().nullable(),
   number: z.string().min(1, "Введите номер вагона"),
   wagonTypeId: z.string().min(1, "Выберите тип вагона"),
+  // «Ish boshlanish sanasi» / «Ish tugash sanasi» (ISO). Конец необязателен.
+  plannedStart: z.string().optional().nullable(),
+  plannedEnd: z.string().optional().nullable(),
   // необязательно: выбранные этапы из справочника (динамический набор).
   // если не передано — берём все.
   stageIds: z.array(z.string()).optional(),
@@ -41,6 +45,11 @@ export async function GET() {
             note: true,
             workerCount: true,
             durationSeconds: true,
+            // работы позиции — из них берём суммарное число рабочих и цеха
+            works: {
+              orderBy: { number: "asc" },
+              select: { workerCount: true, seh: true },
+            },
             assignments: {
               orderBy: { order: "asc" },
               select: {
@@ -54,6 +63,8 @@ export async function GET() {
                     lastName: true,
                     middleName: true,
                     photo: true,
+                    seh: true,
+                    role: { select: { nameRu: true, nameUz: true } },
                   },
                 },
               },
@@ -67,18 +78,29 @@ export async function GET() {
       const total = w.stages.length;
       const done = w.stages.filter((s) => s.status === "done").length;
 
-      // Часы: этапов может быть поровну, а работы в них — разного веса.
-      const hoursTotal = w.stages.reduce((a, s) => a + s.durationSeconds / 3600, 0);
-      const hoursDone = w.stages
+      // Дни: этап занимает целое число рабочих дней (8 ч = 1 день).
+      const daysTotal = w.stages.reduce((a, s) => a + stageWorkdays(s.durationSeconds), 0);
+      const daysDone = w.stages
         .filter((s) => s.status === "done")
-        .reduce((a, s) => a + s.durationSeconds / 3600, 0);
+        .reduce((a, s) => a + stageWorkdays(s.durationSeconds), 0);
+
+      // План дат считаем от «Ish boshlanish sanasi», а если не задана — от создания.
+      const start = w.plannedStart ?? w.createdAt;
+      const { plan, end } = wagonSchedule(start, w.stages.map((s) => s.durationSeconds));
+      // Дата сдачи: заданная вручную либо конец плана этапов.
+      const deadline = w.plannedEnd ?? end;
+      const daysLeft = businessDaysUntil(deadline);
 
       // На чём вагон реально стоит
-      const current =
-        w.stages.find((s) => s.status === "blocked") ??
-        w.stages.find((s) => s.status === "in_progress") ??
-        w.stages.find((s) => s.status !== "done") ??
-        null;
+      const curIdx = w.stages.findIndex((s) => s.status === "blocked");
+      const idx =
+        curIdx >= 0
+          ? curIdx
+          : w.stages.findIndex((s) => s.status === "in_progress") >= 0
+            ? w.stages.findIndex((s) => s.status === "in_progress")
+            : w.stages.findIndex((s) => s.status !== "done");
+      const current = idx >= 0 ? w.stages[idx] : null;
+      const curPlan = idx >= 0 ? plan[idx] : null;
       const denier = current?.assignments.find((a) => a.decision === "denied");
 
       return {
@@ -90,7 +112,10 @@ export async function GET() {
         status: computeWagonStatus(w.stages),
         creationStatus: w.creationStatus,
         progress: { done, total },
-        hours: { done: Math.round(hoursDone * 10) / 10, total: Math.round(hoursTotal * 10) / 10 },
+        days: { done: daysDone, total: daysTotal },
+        start,
+        deadline,
+        daysLeft,
         current: current
           ? {
               number: current.number,
@@ -98,7 +123,15 @@ export async function GET() {
               nameUz: current.nameUz,
               status: current.status,
               note: current.note,
-              workerCount: current.workerCount,
+              // работы позиции идут параллельно по цехам, поэтому людей на позиции —
+              // сумма по работам; своё поле позиции берём как запасное
+              workerCount:
+                current.works.reduce((a, w) => a + (w.workerCount ?? 0), 0) ||
+                current.workerCount,
+              sehs: [...new Set(current.works.map((w) => w.seh).filter(Boolean))] as string[],
+              // план дат текущего этапа
+              plannedStart: curPlan?.start ?? null,
+              plannedEnd: curPlan?.end ?? null,
             }
           : null,
         // с решением и датой — на карточке видно, кто уже поставил галочку
@@ -180,6 +213,8 @@ export async function POST(req: Request) {
         nameRu: data.nameRu || null,
         number: data.number,
         wagonTypeId: data.wagonTypeId,
+        plannedStart: data.plannedStart ? new Date(data.plannedStart) : null,
+        plannedEnd: data.plannedEnd ? new Date(data.plannedEnd) : null,
         creationStatus: "pending",
         creationApprovals: {
           create: approverIds.map((uid, idx) => ({ userId: uid, order: idx })),
@@ -201,6 +236,8 @@ export async function POST(req: Request) {
                 nameUz: w.nameUz,
                 nameRu: w.nameRu,
                 hours: w.hours,
+                seh: w.seh,
+                workerCount: w.workerCount,
               })),
             },
             assignments: {

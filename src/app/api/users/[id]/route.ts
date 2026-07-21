@@ -9,6 +9,7 @@ const updateSchema = z.object({
   lastName: z.string().min(1).optional(),
   middleName: z.string().nullable().optional(),
   photo: z.string().nullable().optional(),
+  seh: z.string().nullable().optional(),
   password: z.string().min(4).optional().or(z.literal("")),
   roleId: z.string().min(1).optional(),
   isActive: z.boolean().optional(),
@@ -32,6 +33,7 @@ export async function PATCH(req: Request, { params }: Params) {
         lastName: data.lastName,
         middleName: data.middleName,
         photo: data.photo,
+        seh: data.seh === undefined ? undefined : data.seh?.trim() || null,
         roleId: data.roleId,
         isActive: data.isActive,
         ...(data.password

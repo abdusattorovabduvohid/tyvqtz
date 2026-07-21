@@ -60,6 +60,7 @@ interface MyStage {
   startedBy: { firstName: string; lastName: string; middleName: string | null } | null;
   finishedAt: string | null;
   finishedBy: { firstName: string; lastName: string; middleName: string | null } | null;
+  finishComment: string | null;
   deniedBy: { name: string; comment: string | null } | null;
   wagon: {
     id: string;
@@ -132,6 +133,11 @@ export default function MyStagesPage() {
   const [denyComment, setDenyComment] = useState("");
   const [denySaving, setDenySaving] = useState(false);
 
+  // завершение с обязательной причиной отклонения от норматива
+  const [finishStage, setFinishStage] = useState<MyStage | null>(null);
+  const [finishComment, setFinishComment] = useState("");
+  const [finishSaving, setFinishSaving] = useState(false);
+
   // отказ согласования создания
   const [denyCreation, setDenyCreation] = useState<MyCreation | null>(null);
   const [cDenyComment, setCDenyComment] = useState("");
@@ -185,6 +191,22 @@ export default function MyStagesPage() {
       return false;
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function submitFinish() {
+    if (!finishStage) return;
+    setFinishSaving(true);
+    const ok = await patch(
+      finishStage.id,
+      { action: "finish", comment: finishComment },
+      finishStage.id + "finish",
+      t("wd.finished")
+    );
+    setFinishSaving(false);
+    if (ok) {
+      setFinishStage(null);
+      setFinishComment("");
     }
   }
 
@@ -337,7 +359,10 @@ export default function MyStagesPage() {
           color="teal"
           leftSection={<IconCheck size={16} />}
           loading={busy === s.id + "finish"}
-          onClick={() => patch(s.id, { action: "finish" }, s.id + "finish", t("wd.finished"))}
+          onClick={() => {
+            setFinishStage(s);
+            setFinishComment("");
+          }}
         >
           {t("my.finish")}
         </Button>
@@ -719,6 +744,23 @@ export default function MyStagesPage() {
                             · {formatDateTime(s.finishedAt)}
                           </Text>
                         )}
+                        {s.finishedAt &&
+                          s.deadline &&
+                          (() => {
+                            const late =
+                              new Date(s.finishedAt).getTime() > s.deadline;
+                            return (
+                              <Text
+                                size="11px"
+                                mt={4}
+                                fw={600}
+                                c={late ? "red" : "teal"}
+                              >
+                                {late ? t("wd.finishLate") : t("wd.finishEarly")}
+                                {s.finishComment ? ` · «${s.finishComment}»` : ""}
+                              </Text>
+                            );
+                          })()}
                       </div>
                     </Group>
                   </Card>
@@ -728,6 +770,56 @@ export default function MyStagesPage() {
           )}
         </Stack>
       )}
+
+      {/* Завершение — обязательна причина отклонения от норматива */}
+      <Modal
+        opened={!!finishStage}
+        onClose={() => setFinishStage(null)}
+        title={finishStage ? t("wd.finishTitle", { number: finishStage.number }) : ""}
+      >
+        <Stack>
+          {finishStage &&
+            (() => {
+              const planned = finishStage.deadline;
+              const late = planned != null && Date.now() > planned;
+              return (
+                <Alert
+                  color={late ? "red" : "teal"}
+                  variant="light"
+                  icon={<IconAlertTriangle size={16} />}
+                  title={late ? t("wd.finishLate") : t("wd.finishEarly")}
+                >
+                  {planned && (
+                    <Text size="sm">
+                      {t("wd.finishPlanned")}:{" "}
+                      <Text span fw={600}>
+                        {formatDateTime(new Date(planned))}
+                      </Text>
+                    </Text>
+                  )}
+                  <Text size="sm">{t("wd.finishReasonHint")}</Text>
+                </Alert>
+              );
+            })()}
+          <Textarea
+            label={t("wd.finishReason")}
+            placeholder={t("wd.finishPlaceholder")}
+            minRows={3}
+            autosize
+            withAsterisk
+            value={finishComment}
+            onChange={(e) => setFinishComment(e.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setFinishStage(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button color="teal" onClick={submitFinish} loading={finishSaving}>
+              {t("my.finish")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Modal
         opened={!!denyStage}

@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
 import {
   worksSchema,
-  worksToDurationSeconds,
+  daysSchema,
+  daysToDurationSeconds,
   numberWorks,
 } from "@/lib/stage-works";
 
@@ -12,9 +13,9 @@ const createSchema = z.object({
   number: z.number().int().min(1, "Номер позиции от 1"),
   nameUz: z.string().min(1, "Введите название позиции"),
   nameRu: z.string().optional().nullable(),
-  workerCount: z.number().int().min(1).optional().nullable(),
   note: z.string().optional().nullable(),
-  // время позиции не принимаем — считаем из работ
+  // календарный срок позиции в рабочих днях — из него durationSeconds
+  days: daysSchema,
   works: worksSchema,
 });
 
@@ -47,9 +48,8 @@ export async function POST(req: Request) {
         number: data.number,
         nameUz: data.nameUz,
         nameRu: data.nameRu || null,
-        workerCount: data.workerCount ?? null,
         note: data.note?.trim() || null,
-        durationSeconds: worksToDurationSeconds(works),
+        durationSeconds: daysToDurationSeconds(data.days),
         works: { create: works },
       },
       include: { works: { orderBy: { number: "asc" } } },

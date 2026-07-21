@@ -27,6 +27,7 @@ import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
+import { wagonSchedule, formatDate } from "@/lib/format";
 import { OrderedUserPicker } from "@/components/OrderedUserPicker";
 import { WagonCard, type WagonListItem as Wagon } from "@/components/WagonCard";
 
@@ -46,10 +47,14 @@ function WagonsContent() {
   const [nameUz, setNameUz] = useState("");
   const [number, setNumber] = useState("");
   const [typeId, setTypeId] = useState<string | null>(null);
+  // «Ish boshlanish sanasi» в формате YYYY-MM-DD (нативный date input)
+  const [startDate, setStartDate] = useState("");
   const [allStages, setAllStages] = useState<
     { value: string; label: string }[]
   >([]);
   const [stageIds, setStageIds] = useState<string[]>([]);
+  // длительности этапов (для расчёта авто-даты окончания)
+  const [stageDur, setStageDur] = useState<Record<string, number>>({});
   const [userOptions, setUserOptions] = useState<
     { value: string; label: string }[]
   >([]);
@@ -95,6 +100,8 @@ function WagonsContent() {
     setNameUz("");
     setNumber("");
     setTypeId(null);
+    // по умолчанию — сегодня
+    setStartDate(new Date().toISOString().slice(0, 10));
     setResponsibleIds([]);
     setExecutorIds([]);
     setCreationApproverIds([]);
@@ -102,10 +109,23 @@ function WagonsContent() {
     try {
       const [st, us] = await Promise.all([
         apiFetch<{
-          stages: { id: string; number: number; nameRu: string; nameUz: string | null }[];
+          stages: {
+            id: string;
+            number: number;
+            nameRu: string;
+            nameUz: string | null;
+            durationSeconds: number;
+          }[];
         }>("/api/stages"),
         apiFetch<{
-          users: { id: string; firstName: string; lastName: string; middleName: string | null }[];
+          users: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            middleName: string | null;
+            seh: string | null;
+            role: { nameRu: string; nameUz: string | null };
+          }[];
         }>("/api/options/users"),
       ]);
       const opts = st.stages.map((s) => ({
@@ -114,11 +134,22 @@ function WagonsContent() {
       }));
       setAllStages(opts);
       setStageIds(opts.map((o) => o.value)); // по умолчанию все выбраны
+      setStageDur(
+        Object.fromEntries(st.stages.map((s) => [s.id, s.durationSeconds]))
+      );
       setUserOptions(
-        us.users.map((u) => ({
-          value: u.id,
-          label: [u.lastName, u.firstName, u.middleName].filter(Boolean).join(" "),
-        }))
+        us.users.map((u) => {
+          // основное — роль и цех; фамилия мелко, чтобы различать однофамильцев по роли
+          const role = pickName(u.role, lang);
+          const withSeh = u.seh ? `${role} · ${u.seh}-${t("wd.sehWord")}` : role;
+          const name = [u.lastName, u.firstName?.[0] && u.firstName[0] + "."]
+            .filter(Boolean)
+            .join(" ");
+          return {
+            value: u.id,
+            label: `${withSeh} (${name})`,
+          };
+        })
       );
     } catch (e: any) {
       notifications.show({ color: "red", message: e.message });
@@ -155,6 +186,7 @@ function WagonsContent() {
           nameRu: nameRu.trim() || null,
           number: number.trim(),
           wagonTypeId: typeId,
+          plannedStart: startDate || null,
           stageIds,
           userIds: responsibleIds,
           executorIds,
@@ -317,6 +349,27 @@ function WagonsContent() {
             searchable
             nothingFoundMessage={t("wagons.noTypes")}
           />
+
+          {/* Дата начала работ; дата сдачи считается автоматически */}
+          <TextInput
+            type="date"
+            label={t("wagons.startAt")}
+            withAsterisk
+            value={startDate}
+            onChange={(e) => setStartDate(e.currentTarget.value)}
+          />
+          {startDate && stageIds.length > 0 && (
+            <Text size="xs" c="dimmed" mt={-6}>
+              {t("wagons.deadlineAuto", {
+                date: formatDate(
+                  wagonSchedule(
+                    startDate,
+                    stageIds.map((id) => stageDur[id] ?? 0)
+                  ).end
+                ),
+              })}
+            </Text>
+          )}
           <MultiSelect
             label={t("wagons.stagesSelect", { n: stageIds.length })}
             placeholder={
