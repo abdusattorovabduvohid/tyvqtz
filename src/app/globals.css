@@ -13,6 +13,21 @@ a {
   text-decoration: none;
 }
 
+/* iOS Safari при фокусе на поле с font-size < 16px зумит всю страницу и уводит
+   вёрстку в сторону. У Mantine поля по умолчанию 14px — на узких экранах
+   поднимаем до 16px, и автозум отключается сам.
+   Через maximum-scale=1 это не решаем: тогда сломается и пинч-зум,
+   а сотрудникам нужно увеличивать фото вагонов. */
+@media (max-width: 48em) {
+  input,
+  select,
+  textarea,
+  .mantine-Input-input,
+  .mantine-InputBase-input {
+    font-size: 16px;
+  }
+}
+
 /* плавная прокрутка и аккуратный скроллбар */
 * {
   scrollbar-width: thin;
