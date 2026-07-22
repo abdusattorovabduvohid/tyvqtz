@@ -28,7 +28,6 @@ import {
   IconPencil,
   IconTrash,
   IconClock,
-  IconWand,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/client";
@@ -220,29 +219,6 @@ export default function StagesPage() {
     });
   }
 
-  function generate23() {
-    modals.openConfirmModal({
-      title: t("stages.generateTitle"),
-      children: <Text size="sm">{t("stages.generateBody")}</Text>,
-      labels: { confirm: t("stages.generate"), cancel: t("common.cancel") },
-      onConfirm: async () => {
-        try {
-          const r = await apiFetch<{ created: number }>("/api/stages/generate", {
-            method: "POST",
-            body: JSON.stringify({ count: 23, durationSeconds: 3600 }),
-          });
-          notifications.show({
-            color: "teal",
-            message: t("stages.generated", { n: r.created }),
-          });
-          load();
-        } catch (e: any) {
-          notifications.show({ color: "red", message: e.message });
-        }
-      },
-    });
-  }
-
   return (
     <Page>
       <PageHeader
@@ -250,25 +226,12 @@ export default function StagesPage() {
         subtitle={t("stages.subtitle")}
         action={
           can("stages", "create") && (
-            <Group>
-              <Button
-                variant="light"
-                leftSection={<IconWand size={18} />}
-                onClick={generate23}
-              >
-                {t("stages.generate")}
-              </Button>
-              <Button leftSection={<IconPlus size={18} />} onClick={openCreate}>
-                {t("stages.create")}
-              </Button>
-            </Group>
+            <Button leftSection={<IconPlus size={18} />} onClick={openCreate}>
+              {t("stages.create")}
+            </Button>
           )
         }
       />
-
-      <Card p="md" mb="md" bg="var(--mantine-color-steel-light)">
-        <Text size="sm">{t("stages.info", { n: stages.length })}</Text>
-      </Card>
 
       <Card p={0}>
         {loading ? (
