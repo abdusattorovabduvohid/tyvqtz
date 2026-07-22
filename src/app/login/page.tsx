@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   Button,
   PasswordInput,
@@ -35,6 +36,15 @@ function LoginContent() {
   const params = useSearchParams();
   const { t } = useI18n();
   const [loading, setLoading] = useState(false);
+
+  // Тяжёлые анимации (4 пятна с blur 90px + плавающий логотип) на телефоне
+  // насыщают GPU-композитор, и ввод в поля начинает лагать. На узких экранах
+  // отдаём статичный градиент. getInitialValueInEffect:false + значение по
+  // умолчанию false => до определения экрана считаем «мобильным» и анимации
+  // не рисуем (лучше без анимаций, чем лаг при вводе).
+  const isDesktop = useMediaQuery("(min-width: 48em)", false, {
+    getInitialValueInEffect: false,
+  });
 
   const form = useForm({
     initialValues: { login: "", password: "" },
@@ -83,29 +93,31 @@ function LoginContent() {
         overflow: "hidden",
       }}
     >
-      {/* aurora пятна */}
-      {BLOBS.map((b, i) => (
-        <motion.div
-          key={i}
-          style={{
-            position: "absolute",
-            width: b.size,
-            height: b.size,
-            top: b.top,
-            left: b.left,
-            borderRadius: "50%",
-            background: b.color,
-            filter: "blur(90px)",
-            opacity: 0.55,
-          }}
-          animate={{
-            x: [0, 40, -20, 0],
-            y: [0, -30, 25, 0],
-            scale: [1, 1.12, 0.95, 1],
-          }}
-          transition={{ duration: b.dur, repeat: Infinity, ease: "easeInOut" }}
-        />
-      ))}
+      {/* aurora пятна — только на десктопе: на телефоне blur 90px + бесконечная
+          анимация лагают ввод. Мобильный получает статичный градиент фона. */}
+      {isDesktop &&
+        BLOBS.map((b, i) => (
+          <motion.div
+            key={i}
+            style={{
+              position: "absolute",
+              width: b.size,
+              height: b.size,
+              top: b.top,
+              left: b.left,
+              borderRadius: "50%",
+              background: b.color,
+              filter: "blur(90px)",
+              opacity: 0.55,
+            }}
+            animate={{
+              x: [0, 40, -20, 0],
+              y: [0, -30, 25, 0],
+              scale: [1, 1.12, 0.95, 1],
+            }}
+            transition={{ duration: b.dur, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
 
       {/* тонкая сетка поверх */}
       <div
@@ -149,7 +161,7 @@ function LoginContent() {
               transition={{ delay: 0.1, type: "spring", stiffness: 160, damping: 14 }}
             >
               <motion.div
-                animate={{ y: [0, -5, 0] }}
+                animate={isDesktop ? { y: [0, -5, 0] } : undefined}
                 transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
                 style={{ filter: "drop-shadow(0 12px 26px rgba(27,42,126,0.35))" }}
               >
