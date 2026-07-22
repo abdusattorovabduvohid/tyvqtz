@@ -5,9 +5,25 @@
 // устаревшее состояние вагона/этапа и внесёт неверные данные.
 // Кешируем только статику, которая не может «протухнуть».
 
-const STATIC_CACHE = "tyvqtz-static-v1";
-const MEDIA_CACHE = "tyvqtz-media-v1";
+// Версии подняты до v2: сбрасываем всё, что осело в кеше за прошлые деплои.
+const STATIC_CACHE = "tyvqtz-static-v2";
+const MEDIA_CACHE = "tyvqtz-media-v2";
 const KNOWN_CACHES = [STATIC_CACHE, MEDIA_CACHE];
+
+// Фото вагонов тяжёлые. Без ограничения кеш растёт бесконечно и давит на
+// память — в установленной PWA это ускоряет «убийство» процесса системой.
+const MEDIA_MAX_ENTRIES = 60;
+
+// Оставляем в кеше не больше max записей, самые старые удаляем (по порядку
+// добавления — Cache API отдаёт ключи в этом порядке).
+async function trimCache(cacheName, max) {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+  if (keys.length <= max) return;
+  for (const key of keys.slice(0, keys.length - max)) {
+    await cache.delete(key);
+  }
+}
 
 self.addEventListener("install", () => {
   // Ничего не префетчим: новая сборка Next меняет хеши файлов,
@@ -65,7 +81,11 @@ async function staleWhileRevalidate(request, cacheName) {
 
   const fetching = fetch(request)
     .then((response) => {
-      if (response.ok) cache.put(request, response.clone());
+      if (response.ok) {
+        cache
+          .put(request, response.clone())
+          .then(() => trimCache(cacheName, MEDIA_MAX_ENTRIES));
+      }
       return response;
     })
     // офлайн: если в кеше пусто — пусть ошибка дойдёт до вызывающего

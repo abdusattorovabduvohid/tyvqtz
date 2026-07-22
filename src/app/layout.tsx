@@ -13,6 +13,7 @@ import { ModalsProvider } from "@mantine/modals";
 import { theme } from "./theme";
 import { I18nProvider } from "@/components/I18nProvider";
 import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
+import { PwaResumeGuard } from "@/components/PwaResumeGuard";
 import { getLang } from "@/lib/i18n/server";
 
 // PWA: цвет системной строки в установленном приложении.
@@ -94,6 +95,7 @@ export default function RootLayout({
       <body>
         <MantineProvider theme={theme} defaultColorScheme="light">
           <ServiceWorkerRegistrar />
+          <PwaResumeGuard />
           <Notifications position="top-right" />
           <I18nProvider initialLang={lang}>
             <ModalsProvider>{children}</ModalsProvider>

@@ -190,7 +190,11 @@ export default function WagonDetailPage() {
 
   useEffect(() => {
     load();
-    const t = setInterval(() => load(true), 5000);
+    // Не опрашиваем сервер, пока вкладка/приложение в фоне: в установленной PWA
+    // это лишняя нагрузка и память, из-за которой iOS быстрее убивает процесс.
+    const t = setInterval(() => {
+      if (!document.hidden) load(true);
+    }, 5000);
     return () => clearInterval(t);
   }, [load]);
 
