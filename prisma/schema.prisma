@@ -16,14 +16,14 @@ datasource db {
 // ──────────────────────────── RBAC ────────────────────────────
 
 model Role {
-  id            String   @id @default(cuid())
-  nameUz        String   @unique
-  nameRu        String?
-  isSuperAdmin  Boolean  @default(false)
+  id           String   @id @default(cuid())
+  nameUz       String   @unique
+  nameRu       String?
+  isSuperAdmin Boolean  @default(false)
   // JSON: { "<section>": ["view","create","update","delete"], ... }
-  permissions   String   @default("{}")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  permissions  String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   users User[]
 }
@@ -43,10 +43,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  assignedWagonStages WagonStageAssignment[]
-  startedStages       WagonStage[]           @relation("StageStartedBy")
-  finishedStages      WagonStage[]           @relation("StageFinishedBy")
+  assignedWagonStages    WagonStageAssignment[]
+  startedStages          WagonStage[]            @relation("StageStartedBy")
+  finishedStages         WagonStage[]            @relation("StageFinishedBy")
   wagonCreationApprovals WagonCreationApproval[] @relation("WagonCreationApprover")
+  daySignoffs            WagonStageDaySignoff[]
 }
 
 // ──────────────────────────── Вагоны ────────────────────────────
@@ -82,38 +83,38 @@ model Stage {
 
 // Строка «Наименования работ» внутри позиции.
 model StageWork {
-  id      String @id @default(cuid())
-  stageId String
-  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  number  Int // № работы внутри позиции
-  nameUz  String
-  nameRu  String?
-  hours   Float // «Время работа»: 12ч, 2ч …
-  seh     String? // цех этой работы — в бумаге у каждой работы свой (№8, №2 …)
+  id          String  @id @default(cuid())
+  stageId     String
+  stage       Stage   @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  number      Int // № работы внутри позиции
+  nameUz      String
+  nameRu      String?
+  hours       Float // «Время работа»: 12ч, 2ч …
+  seh         String? // цех этой работы — в бумаге у каждой работы свой (№8, №2 …)
   workerCount Int? // количество работников на работу
 
   @@unique([stageId, number])
 }
 
 model Wagon {
-  id          String   @id @default(cuid())
-  nameUz      String // название вагона (узб)
-  nameRu      String? // название вагона (рус)
-  number      String // номер вагона
-  wagonTypeId String
-  wagonType   WagonType @relation(fields: [wagonTypeId], references: [id])
-  status      String    @default("pending") // pending | in_progress | done
+  id             String    @id @default(cuid())
+  nameUz         String // название вагона (узб)
+  nameRu         String? // название вагона (рус)
+  number         String // номер вагона
+  wagonTypeId    String
+  wagonType      WagonType @relation(fields: [wagonTypeId], references: [id])
+  status         String    @default("pending") // pending | in_progress | done
   // статус подтверждения создания вагона (1-я фаза согласования)
-  creationStatus String @default("approved") // pending | approved | rejected
+  creationStatus String    @default("approved") // pending | approved | rejected
   // «Ish boshlanish sanasi» из бумаги — задаётся при создании.
   // От неё считается план дат этапов. Пусто → берём createdAt.
-  plannedStart DateTime?
+  plannedStart   DateTime?
   // «Ish tugash sanasi» — обычно считается автоматически, но можно задать вручную.
-  plannedEnd   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  plannedEnd     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  stages           WagonStage[]
+  stages            WagonStage[]
   creationApprovals WagonCreationApproval[]
 }
 
@@ -157,8 +158,28 @@ model WagonStage {
 
   assignments WagonStageAssignment[]
   works       WagonStageWork[]
+  daySignoffs WagonStageDaySignoff[]
 
   @@unique([wagonId, number])
+}
+
+// Приёмка одного рабочего дня позиции. Каждый назначенный (ответственный)
+// подходит к вагону, смотрит работу за этот день и ставит подпись (галочку).
+// День принят, когда подписали все назначенные; позиция готова — когда
+// приняты все её дни. Ни таймера, ни «Старт/Завершить» тут нет.
+model WagonStageDaySignoff {
+  id           String     @id @default(cuid())
+  wagonStageId String
+  wagonStage   WagonStage @relation(fields: [wagonStageId], references: [id], onDelete: Cascade)
+  dayIndex     Int // номер рабочего дня внутри позиции, с 1
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // accepted — принял работу дня; rejected — не принял, тогда нужен comment
+  decision     String     @default("accepted")
+  comment      String?
+  signedAt     DateTime   @default(now())
+
+  @@unique([wagonStageId, dayIndex, userId])
 }
 
 // Снимок строки «Наименования работ» для конкретного вагона.

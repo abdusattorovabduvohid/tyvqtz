@@ -14,7 +14,6 @@ import {
   Center,
   Loader,
   TextInput,
-  Tooltip,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -24,7 +23,6 @@ import {
   IconPencil,
   IconTrash,
   IconSearch,
-  IconUserOff,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/client";

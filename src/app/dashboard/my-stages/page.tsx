@@ -85,16 +85,6 @@ interface MyCreation {
   approval: { approved: number; total: number };
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: "gray",
-  awaiting: "yellow",
-  ready: "steel",
-  blocked: "red",
-  in_progress: "blue",
-  overdue: "red",
-  done: "teal",
-};
-
 // Номер этапа — этапы идут цепочкой, номер важнее названия.
 function StageNum({ n, color }: { n: number; color: "steel" | "gray" }) {
   return (

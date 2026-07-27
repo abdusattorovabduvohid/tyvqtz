@@ -2,7 +2,6 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMediaQuery } from "@mantine/hooks";
 import {
   Button,
   PasswordInput,
@@ -36,15 +35,6 @@ function LoginContent() {
   const params = useSearchParams();
   const { t } = useI18n();
   const [loading, setLoading] = useState(false);
-
-  // Тяжёлые анимации (4 пятна с blur 90px + плавающий логотип) на телефоне
-  // насыщают GPU-композитор, и ввод в поля начинает лагать. На узких экранах
-  // отдаём статичный градиент. getInitialValueInEffect:false + значение по
-  // умолчанию false => до определения экрана считаем «мобильным» и анимации
-  // не рисуем (лучше без анимаций, чем лаг при вводе).
-  const isDesktop = useMediaQuery("(min-width: 48em)", false, {
-    getInitialValueInEffect: false,
-  });
 
   const form = useForm({
     initialValues: { login: "", password: "" },
@@ -93,31 +83,28 @@ function LoginContent() {
         overflow: "hidden",
       }}
     >
-      {/* aurora пятна — только на десктопе: на телефоне blur 90px + бесконечная
-          анимация лагают ввод. Мобильный получает статичный градиент фона. */}
-      {isDesktop &&
-        BLOBS.map((b, i) => (
-          <motion.div
-            key={i}
-            style={{
-              position: "absolute",
-              width: b.size,
-              height: b.size,
-              top: b.top,
-              left: b.left,
-              borderRadius: "50%",
-              background: b.color,
-              filter: "blur(90px)",
-              opacity: 0.55,
-            }}
-            animate={{
-              x: [0, 40, -20, 0],
-              y: [0, -30, 25, 0],
-              scale: [1, 1.12, 0.95, 1],
-            }}
-            transition={{ duration: b.dur, repeat: Infinity, ease: "easeInOut" }}
-          />
-        ))}
+      {/* aurora-пятна — СТАТИЧНЫЕ, без анимации. Бесконечная анимация 4 больших
+          blur-слоёв держит GPU-композитор занятым, и на каждый кадр ввода печать
+          в поля лагала — и на телефоне, и на компьютере. Статичные пятна
+          растеризуются один раз, красоту фона сохраняют, лага нет. */}
+      {BLOBS.map((b, i) => (
+        <div
+          key={i}
+          aria-hidden
+          style={{
+            position: "absolute",
+            width: b.size,
+            height: b.size,
+            top: b.top,
+            left: b.left,
+            borderRadius: "50%",
+            background: b.color,
+            filter: "blur(70px)",
+            opacity: 0.45,
+            pointerEvents: "none",
+          }}
+        />
+      ))}
 
       {/* тонкая сетка поверх */}
       <div
@@ -144,9 +131,11 @@ function LoginContent() {
       >
         <Box
           style={{
-            background: "rgba(255,255,255,0.94)",
-            backdropFilter: "blur(18px)",
-            WebkitBackdropFilter: "blur(18px)",
+            // Без backdrop-filter: карта стоит над движущимися blur-пятнами, и
+            // размытие фона пересчитывалось на КАЖДЫЙ кадр ввода — из-за этого
+            // печать в поля лагала и на компьютере. Карта и так почти
+            // непрозрачная, поэтому визуально ничего не теряем.
+            background: "#ffffff",
             border: "1px solid rgba(255,255,255,0.5)",
             borderRadius: 22,
             padding: "40px 34px",
@@ -155,19 +144,11 @@ function LoginContent() {
           }}
         >
           <Stack align="center" gap={6} mb="lg">
-            <motion.div
-              initial={{ opacity: 0, y: -8, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: 0.1, type: "spring", stiffness: 160, damping: 14 }}
-            >
-              <motion.div
-                animate={isDesktop ? { y: [0, -5, 0] } : undefined}
-                transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
-                style={{ filter: "drop-shadow(0 12px 26px rgba(27,42,126,0.35))" }}
-              >
-                <Logo height={104} />
-              </motion.div>
-            </motion.div>
+            {/* логотип статичный, без «плавания» — бесконечная анимация тоже
+                нагружала композитор и добавляла лаг при вводе */}
+            <div style={{ filter: "drop-shadow(0 12px 26px rgba(27,42,126,0.35))" }}>
+              <Logo height={104} />
+            </div>
 
             <Text
               fw={700}

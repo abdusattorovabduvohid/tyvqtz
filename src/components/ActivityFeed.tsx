@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Card, Text, Group, Box, Center, ThemeIcon, Stack } from "@mantine/core";
+import { Card, Text, Box, Center, ThemeIcon, Stack } from "@mantine/core";
 import { IconPlayerPlay, IconCheck, IconX, IconHistory } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 import { useI18n } from "./I18nProvider";

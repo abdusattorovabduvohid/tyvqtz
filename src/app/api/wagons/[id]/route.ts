@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
-import {
-  computeStageState,
-  computeWagonStatus,
-  computeApproval,
-  resolveStageStatus,
-} from "@/lib/wagon";
+import { computeWagonStatus } from "@/lib/wagon";
 
 type Params = { params: { id: string } };
 
@@ -37,6 +32,7 @@ export async function GET(_req: Request, { params }: Params) {
           orderBy: { number: "asc" },
           include: {
             works: { orderBy: { number: "asc" } },
+            daySignoffs: true,
             startedBy: {
               select: { firstName: true, lastName: true, middleName: true },
             },
@@ -66,10 +62,13 @@ export async function GET(_req: Request, { params }: Params) {
     if (!wagon) throw new ApiError(404, "Вагон не найден");
 
     const now = Date.now();
+    // статус позиции теперь ведут подписи (в API signoff): pending | in_progress | done.
+    // Позиция «заблокирована» для приёмки, пока не завершён предыдущий этап.
+    const doneByNumber = new Map(
+      wagon.stages.map((s) => [s.number, s.status === "done"])
+    );
     const stages = wagon.stages.map((s) => {
-      const state = computeStageState(s, now);
-      const approval = computeApproval(s.assignments);
-      const status = resolveStageStatus(s.status, s.assignments, state.overdue);
+      const locked = s.number > 1 && !doneByNumber.get(s.number - 1);
       return {
         id: s.id,
         number: s.number,
@@ -79,22 +78,20 @@ export async function GET(_req: Request, { params }: Params) {
         workerCount: s.workerCount,
         note: s.note,
         works: s.works,
-        status, // pending | awaiting | ready | blocked | in_progress | overdue | done
-        rawStatus: s.status,
-        startedAt: s.startedAt,
-        startedBy: s.startedBy,
+        status: s.status, // pending | in_progress | done
+        locked, // предыдущий этап ещё не завершён — приёмка недоступна
         finishedAt: s.finishedAt,
         finishedBy: s.finishedBy,
-        finishComment: s.finishComment,
-        deadline: state.deadline,
-        remainingMs: state.remainingMs,
-        overdue: state.overdue,
-        approval,
+        // подписи по дням: кто какой день принял / не принял
+        signoffs: s.daySignoffs.map((d) => ({
+          dayIndex: d.dayIndex,
+          userId: d.userId,
+          decision: d.decision, // accepted | rejected
+          comment: d.comment,
+          signedAt: d.signedAt,
+        })),
         assignees: s.assignments.map((a) => ({
           ...a.user,
-          decision: a.decision,
-          comment: a.comment,
-          decidedAt: a.decidedAt,
           canExecute: a.canExecute,
         })),
       };

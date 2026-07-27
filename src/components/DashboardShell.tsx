@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,7 +11,6 @@ import {
   Avatar,
   Menu,
   rem,
-  ThemeIcon,
   Box,
   ScrollArea,
 } from "@mantine/core";
@@ -28,7 +26,6 @@ import {
   IconChevronRight,
   IconLayoutDashboard,
   IconClipboardList,
-  IconBuildingFactory2,
 } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/client";

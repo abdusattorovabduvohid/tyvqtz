@@ -4,21 +4,66 @@ import { prisma } from "@/lib/db";
 import { requireUser, handleError, ApiError } from "@/lib/api";
 import { can } from "@/lib/permissions";
 import { computeApproval } from "@/lib/wagon";
+import { stageWorkdays } from "@/lib/format";
 
 const schema = z.object({
-  action: z.enum(["assign", "approve", "deny", "start", "finish", "reset"]),
-  userIds: z.array(z.string()).optional(),
-  // кто из назначенных жмёт «Старт» / «Завершить» (подмножество userIds)
-  executorIds: z.array(z.string()).optional(),
+  action: z.enum([
+    "approve",
+    "deny",
+    "start",
+    "finish",
+    "signoff", // приёмка одного рабочего дня позиции
+  ]),
   comment: z.string().optional(),
+  // для signoff: какой день принимаем и решение
+  dayIndex: z.number().int().min(1).optional(),
+  // accepted — принять, rejected — не принять (нужен comment), none — снять подпись
+  decision: z.enum(["accepted", "rejected", "none"]).optional(),
 });
 
 type Params = { params: { id: string } };
 
+// Пересчёт статуса позиции по подписям. День принят, когда его подписали
+// ВСЕ назначенные; позиция готова, когда приняты все её дни.
+async function recomputeStageStatus(stageId: string) {
+  const st = await prisma.wagonStage.findUnique({
+    where: { id: stageId },
+    include: { assignments: true, daySignoffs: true },
+  });
+  if (!st) return;
+  const totalDays = stageWorkdays(st.durationSeconds);
+  const assignees = st.assignments.length;
+
+  const acceptedPerDay = (day: number) =>
+    st.daySignoffs.filter((s) => s.dayIndex === day && s.decision === "accepted")
+      .length;
+  const anyRejected = st.daySignoffs.some((s) => s.decision === "rejected");
+
+  let status: string = "pending";
+  if (st.daySignoffs.length > 0) status = "in_progress";
+  if (assignees > 0) {
+    const allDaysDone = Array.from({ length: totalDays }, (_, i) => i + 1).every(
+      (d) => acceptedPerDay(d) >= assignees
+    );
+    if (allDaysDone) status = "done";
+  }
+  // хотя бы один отказ — позиция остановлена, пока не переделают и не примут
+  if (anyRejected && status !== "done") status = "blocked";
+
+  await prisma.wagonStage.update({
+    where: { id: stageId },
+    data: {
+      status,
+      startedAt: st.daySignoffs.length ? st.startedAt ?? new Date() : null,
+      finishedAt: status === "done" ? st.finishedAt ?? new Date() : null,
+    },
+  });
+}
+
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireUser();
-    const { action, userIds, executorIds, comment } = schema.parse(
+    const { action, comment, dayIndex, decision } = schema.parse(
       await req.json()
     );
 
@@ -41,64 +86,6 @@ export async function PATCH(req: Request, { params }: Params) {
     // Разрешение (approve/deny) дают все назначенные, а «Старт»/«Завершить»
     // жмут только отмеченные canExecute. Управляющий — как запасной вариант.
     const isExecutor = Boolean(myAssignment?.canExecute);
-
-    // ── Назначение исполнителей (только управляющий) ──
-    if (action === "assign") {
-      if (!isManager) throw new ApiError(403, "Недостаточно прав");
-      if (stage.status === "in_progress" || stage.status === "done") {
-        throw new ApiError(400, "Нельзя менять исполнителей запущенного этапа");
-      }
-      const ids = Array.from(new Set(userIds ?? []));
-      // executorIds не передан — кнопки остаются у всех назначенных (как раньше)
-      const execIds = executorIds ? Array.from(new Set(executorIds)) : null;
-      if (execIds?.some((id) => !ids.includes(id))) {
-        throw new ApiError(
-          400,
-          "Нажимать старт и завершение могут только ответственные за этап"
-        );
-      }
-      await prisma.$transaction([
-        prisma.wagonStageAssignment.deleteMany({
-          where: { wagonStageId: stage.id },
-        }),
-        ...(ids.length
-          ? [
-              prisma.wagonStageAssignment.createMany({
-                data: ids.map((uid, idx) => ({
-                  wagonStageId: stage.id,
-                  userId: uid,
-                  order: idx,
-                  decision: "pending",
-                  canExecute: execIds ? execIds.includes(uid) : true,
-                })),
-              }),
-            ]
-          : []),
-        prisma.wagonStage.update({
-          where: { id: stage.id },
-          data: { status: "pending" },
-        }),
-      ]);
-      return NextResponse.json({ ok: true });
-    }
-
-    // ── Сброс согласований (управляющий) — снять блокировку, начать заново ──
-    if (action === "reset") {
-      if (!isManager) throw new ApiError(403, "Недостаточно прав");
-      if (stage.status === "done")
-        throw new ApiError(400, "Этап уже завершён");
-      await prisma.$transaction([
-        prisma.wagonStageAssignment.updateMany({
-          where: { wagonStageId: stage.id },
-          data: { decision: "pending", comment: null, decidedAt: null },
-        }),
-        prisma.wagonStage.update({
-          where: { id: stage.id },
-          data: { status: "pending", startedAt: null, startedById: null },
-        }),
-      ]);
-      return NextResponse.json({ ok: true });
-    }
 
     // ── Согласование / Отказ (только назначенный исполнитель) ──
     if (action === "approve" || action === "deny") {
@@ -139,6 +126,96 @@ export async function PATCH(req: Request, { params }: Params) {
         where: { id: myAssignment.id },
         data: { decision: "approved", comment: null, decidedAt: new Date() },
       });
+      return NextResponse.json({ ok: true });
+    }
+
+    // ── Приёмка рабочего дня: принять / не принять / снять подпись ──
+    if (action === "signoff") {
+      if (stage.wagon.creationStatus !== "approved") {
+        throw new ApiError(400, "Сначала согласуйте создание вагона");
+      }
+      const me = stage.assignments.find((a) => a.userId === user.id);
+      if (!me) throw new ApiError(403, "Вы не назначены на этот этап");
+      if (!dayIndex) throw new ApiError(400, "Не указан день");
+      const totalDays = stageWorkdays(stage.durationSeconds);
+      if (dayIndex > totalDays) throw new ApiError(400, "Такого дня нет");
+
+      const dec = decision ?? "accepted";
+
+      // последовательность этапов: предыдущий этап должен быть завершён
+      if (stage.number > 1) {
+        const prev = await prisma.wagonStage.findUnique({
+          where: {
+            wagonId_number: { wagonId: stage.wagonId, number: stage.number - 1 },
+          },
+        });
+        if (prev && prev.status !== "done") {
+          throw new ApiError(400, `Сначала завершите этап №${stage.number - 1}`);
+        }
+      }
+
+      const allSignoffs = await prisma.wagonStageDaySignoff.findMany({
+        where: { wagonStageId: stage.id },
+      });
+      const acceptedOn = (day: number, uid: string) =>
+        allSignoffs.some(
+          (s) => s.dayIndex === day && s.userId === uid && s.decision === "accepted"
+        );
+
+      // последовательность дней: день можно принимать, только когда предыдущий
+      // день принят всеми (кроме первого дня)
+      if (dec !== "none" && dayIndex > 1) {
+        const prevDayDone = stage.assignments.every((a) =>
+          acceptedOn(dayIndex - 1, a.userId)
+        );
+        if (!prevDayDone) {
+          throw new ApiError(400, `Сначала примите день ${dayIndex - 1}`);
+        }
+      }
+
+      // последовательность людей: все ответственные раньше меня (по order)
+      // должны уже принять этот день
+      if (dec !== "none") {
+        const earlier = stage.assignments.filter((a) => a.order < me.order);
+        const blockedBy = earlier.find((a) => !acceptedOn(dayIndex, a.userId));
+        if (blockedBy) {
+          throw new ApiError(400, "Дождитесь приёмки предыдущего ответственного");
+        }
+      }
+
+      if (dec === "none") {
+        await prisma.wagonStageDaySignoff.deleteMany({
+          where: { wagonStageId: stage.id, dayIndex, userId: user.id },
+        });
+      } else {
+        const text = (comment ?? "").trim();
+        if (dec === "rejected" && text.length < 3) {
+          throw new ApiError(400, "Укажите причину, почему день не принят (от 3 символов)");
+        }
+        await prisma.wagonStageDaySignoff.upsert({
+          where: {
+            wagonStageId_dayIndex_userId: {
+              wagonStageId: stage.id,
+              dayIndex,
+              userId: user.id,
+            },
+          },
+          create: {
+            wagonStageId: stage.id,
+            dayIndex,
+            userId: user.id,
+            decision: dec,
+            comment: dec === "rejected" ? text : null,
+          },
+          update: {
+            decision: dec,
+            comment: dec === "rejected" ? text : null,
+            signedAt: new Date(),
+          },
+        });
+      }
+
+      await recomputeStageStatus(stage.id);
       return NextResponse.json({ ok: true });
     }
 

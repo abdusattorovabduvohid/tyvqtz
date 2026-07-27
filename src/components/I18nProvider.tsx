@@ -2,11 +2,7 @@
 
 import { createContext, useContext, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  translate,
-  DEFAULT_LANG,
-  type Lang,
-} from "@/lib/i18n/translations";
+import { translate, type Lang } from "@/lib/i18n/translations";
 
 interface I18nValue {
   lang: Lang;

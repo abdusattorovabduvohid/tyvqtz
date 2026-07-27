@@ -67,8 +67,8 @@ type WorkRow = {
 
 const MotionTr = motion.create("tr");
 const emptyRow = (): WorkRow => ({ nameUz: "", nameRu: "", hours: "", seh: "", workerCount: "" });
-// секунды позиции ↔ рабочие дни (8 ч = 1 день)
-const durToDays = (sec: number) => Math.max(1, Math.round(sec / 3600 / 8));
+// секунды позиции → рабочие дни (8 ч = 1 день), как в stageWorkdays: округляем ВВЕРХ
+const durToDays = (sec: number) => Math.max(1, Math.ceil(sec / 3600 / 8));
 // уникальные цехи позиции (из её работ), для колонки списка
 const sehList = (works: { seh: string | null }[]) =>
   Array.from(new Set(works.map((w) => w.seh).filter((x): x is string => !!x)));
@@ -85,8 +85,11 @@ export default function StagesPage() {
   const [number, setNumber] = useState<number | "">("");
   const [nameRu, setNameRu] = useState("");
   const [nameUz, setNameUz] = useState("");
-  const [days, setDays] = useState<number | "">(1); // календарный срок позиции
   const [works, setWorks] = useState<WorkRow[]>([emptyRow()]);
+
+  // срок позиции больше не вводят руками — он равен сумме часов работ (8 ч = 1 день)
+  const editHours = works.reduce((a, w) => a + (Number(w.hours) || 0), 0);
+  const editDays = Math.max(1, Math.ceil(editHours / 8));
 
   async function load() {
     setLoading(true);
@@ -108,7 +111,6 @@ export default function StagesPage() {
     setNumber(stages.length ? Math.max(...stages.map((s) => s.number)) + 1 : 1);
     setNameRu("");
     setNameUz("");
-    setDays(1);
     setWorks([emptyRow()]);
     setModalOpen(true);
   }
@@ -118,7 +120,6 @@ export default function StagesPage() {
     setNumber(s.number);
     setNameRu(s.nameRu);
     setNameUz(s.nameUz ?? "");
-    setDays(durToDays(s.durationSeconds));
     setWorks(
       s.works.length
         ? s.works.map((w) => ({
@@ -166,7 +167,6 @@ export default function StagesPage() {
         number: Number(number),
         nameUz: nameUz.trim(),
         nameRu: nameRu.trim() || null,
-        days: Number(days) || 1,
         works: clean.map((w) => ({
           nameUz: w.nameUz.trim(),
           nameRu: w.nameRu.trim() || null,
@@ -352,24 +352,14 @@ export default function StagesPage() {
         size="xl"
       >
         <Stack>
-          {/* № позиции и её календарный срок в рабочих днях */}
-          <Group grow align="flex-start">
-            <NumberInput
-              label={t("stages.number")}
-              withAsterisk
-              min={1}
-              value={number}
-              onChange={(v) => setNumber(typeof v === "number" ? v : "")}
-            />
-            <NumberInput
-              label={t("stages.days")}
-              description={t("stages.daysHint")}
-              withAsterisk
-              min={1}
-              value={days}
-              onChange={(v) => setDays(typeof v === "number" ? v : "")}
-            />
-          </Group>
+          {/* № позиции. Срок считается сам из суммы часов работ. */}
+          <NumberInput
+            label={t("stages.number")}
+            withAsterisk
+            min={1}
+            value={number}
+            onChange={(v) => setNumber(typeof v === "number" ? v : "")}
+          />
 
           <TextInput
             label={`${t("stages.name")} (${t("field.uz")})`}
@@ -466,7 +456,7 @@ export default function StagesPage() {
               {t("stages.addWorkBtn")}
             </Button>
 
-            {/* срок позиции = введённые дни */}
+            {/* срок позиции считается сам: сумма часов работ, 8 ч = 1 день */}
             <Box
               px="md"
               py={7}
@@ -476,7 +466,7 @@ export default function StagesPage() {
               }}
             >
               <Text size="sm" fw={700} c="grape.8">
-                {t("stages.daysValue", { n: days || 0 })}
+                {t("stages.hoursTotal", { h: editHours })} · {t("stages.daysValue", { n: editDays })}
               </Text>
             </Box>
           </Group>

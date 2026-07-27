@@ -4,8 +4,7 @@ import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
 import {
   worksSchema,
-  daysSchema,
-  daysToDurationSeconds,
+  worksToDurationSeconds,
   numberWorks,
 } from "@/lib/stage-works";
 
@@ -14,9 +13,7 @@ const updateSchema = z.object({
   nameUz: z.string().min(1).optional(),
   nameRu: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
-  // календарный срок позиции в рабочих днях
-  days: daysSchema.optional(),
-  // прислали работы — заменяем их целиком
+  // прислали работы — заменяем их целиком, срок пересчитываем из их часов
   works: worksSchema.optional(),
 });
 
@@ -25,7 +22,7 @@ type Params = { params: { id: string } };
 export async function PATCH(req: Request, { params }: Params) {
   try {
     await requirePermission("stages", "update");
-    const { works, days, ...rest } = updateSchema.parse(await req.json());
+    const { works, ...rest } = updateSchema.parse(await req.json());
 
     if (rest.number !== undefined) {
       const dup = await prisma.stage.findFirst({
@@ -34,21 +31,18 @@ export async function PATCH(req: Request, { params }: Params) {
       if (dup) throw new ApiError(409, `Позиция №${rest.number} уже существует`);
     }
 
-    // срок позиции задаётся днями
-    const durationData =
-      days !== undefined ? { durationSeconds: daysToDurationSeconds(days) } : {};
-
     if (!works) {
       const stage = await prisma.stage.update({
         where: { id: params.id },
-        data: { ...rest, ...durationData },
+        data: rest,
         include: { works: { orderBy: { number: "asc" } } },
       });
       return NextResponse.json({ stage });
     }
 
     // Работы всегда перезаписываем целиком: так проще, чем сверять построчно,
-    // и номера остаются подряд, без дыр после удалений.
+    // и номера остаются подряд, без дыр после удалений. Срок позиции —
+    // сумма часов работ, поэтому пересчитываем его здесь же.
     const rows = numberWorks(works);
     const [, , stage] = await prisma.$transaction([
       prisma.stageWork.deleteMany({ where: { stageId: params.id } }),
@@ -57,7 +51,7 @@ export async function PATCH(req: Request, { params }: Params) {
       }),
       prisma.stage.update({
         where: { id: params.id },
-        data: { ...rest, ...durationData },
+        data: { ...rest, durationSeconds: worksToDurationSeconds(rows) },
         include: { works: { orderBy: { number: "asc" } } },
       }),
     ]);

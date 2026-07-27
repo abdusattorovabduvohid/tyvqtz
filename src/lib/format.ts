@@ -16,24 +16,8 @@ export function formatDuration(
   return parts.join(" ");
 }
 
-// Норматив на вагон в РАБОЧИХ днях (сб/вс не считаются).
-export const WAGON_WORKDAYS = 22;
-
-// Часов в рабочем дне. Из бумажного плана: 12ч → 1,5 дня, 16ч → 2 дня.
+// Часов в рабочем дне (08:00–17:00). На нём держится расчёт дней.
 export const HOURS_PER_DAY = 8;
-
-// Часы → дни. ВАЖНО: считать от ОБЩИХ часов, а не складывать округлённые
-// дни отдельных работ. В плане 12ч+2ч+2ч дают 1,5+0,2+0,2 = 1,9,
-// а «Всего» стоит 2 — потому что это 16ч ÷ 8, а не сумма округлений.
-export function hoursToDays(hours: number): number {
-  return hours / HOURS_PER_DAY;
-}
-
-// «1,5» / «0,2» — один знак после запятой, без хвостовых нулей.
-// Отбрасываем, а не округляем: в плане 2ч → 0,2 (не 0,3), 14ч → 1,7 (не 1,8).
-export function formatDays(days: number): string {
-  return String(Math.floor(days * 10) / 10);
-}
 
 // Дата в формате ДД.ММ.ГГГГ.
 export function formatDate(iso: string | Date): string {
@@ -49,52 +33,6 @@ export function formatDateTime(iso: string | Date): string {
   return `${formatDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Кол-во прошедших рабочих дней (пн–пт) строго после даты создания и до сегодня.
-export function businessDaysElapsed(
-  fromISO: string | Date,
-  now: Date = new Date()
-): number {
-  const start = typeof fromISO === "string" ? new Date(fromISO) : fromISO;
-  const cur = new Date(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate()
-  );
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let count = 0;
-  while (cur < end) {
-    cur.setDate(cur.getDate() + 1);
-    const day = cur.getDay(); // 0 = вс, 6 = сб
-    if (day !== 0 && day !== 6) count += 1;
-  }
-  return count;
-}
-
-// Остаток рабочих дней (может быть отрицательным при просрочке).
-export function workdaysRemaining(
-  fromISO: string | Date,
-  total: number = WAGON_WORKDAYS,
-  now: Date = new Date()
-): number {
-  return total - businessDaysElapsed(fromISO, now);
-}
-
-// Крайний срок вагона: дата создания + N РАБОЧИХ дней (сб/вс не считаются).
-// Время суток сохраняется: созданный в 12:18 должен быть готов к 12:18.
-// Парная к workdaysRemaining — в этот день остаток обращается в ноль.
-export function wagonDeadline(
-  fromISO: string | Date,
-  total: number = WAGON_WORKDAYS
-): Date {
-  const d = new Date(fromISO); // копия — исходную дату не трогаем
-  let added = 0;
-  while (added < total) {
-    d.setDate(d.getDate() + 1);
-    const day = d.getDay(); // 0 = вс, 6 = сб
-    if (day !== 0 && day !== 6) added += 1;
-  }
-  return d;
-}
 
 // ─── Календарный план этапов ───
 // Этапы идут последовательно, один за другим. Выходные (сб/вс) пропускаются:
@@ -179,6 +117,65 @@ export function wagonSchedule(
   const end = plan.length ? plan[plan.length - 1].end : firstWorkday(start);
   const totalDays = durationsSeconds.reduce((a, s) => a + stageWorkdays(s), 0);
   return { plan, end, totalDays };
+}
+
+// ─── Разбивка работ позиции по рабочим дням ───
+// Рабочий день = 8 часов (08:00–17:00). Работы идут ПОСЛЕДОВАТЕЛЬНО: копим
+// часы, каждые 8 ч закрывают день и получают свою дату (сб/вс пропускаются).
+// Если работа не помещается в остаток дня — её «хвост» переносится на
+// следующий день (строгие 8 ч в дне). Пример: 3 ч + 5 ч = 8 ч = один день.
+
+export interface WorkDayPortion<T> {
+  work: T;
+  hours: number; // сколько часов этой работы делается в этот день
+  total: number; // всего часов у работы — для подписи «2 / 8 ч»
+  partial: boolean; // работа разбита между днями
+}
+export interface WorkDay<T> {
+  index: number; // номер дня внутри позиции, с 1
+  date: Date;
+  hours: number; // часов за день (обычно 8, последний — остаток)
+  portions: WorkDayPortion<T>[];
+}
+
+export function splitWorksIntoDays<T extends { hours: number }>(
+  works: T[],
+  start: string | Date
+): WorkDay<T>[] {
+  const CAP = HOURS_PER_DAY;
+  const days: WorkDay<T>[] = [];
+  let cur: WorkDay<T> | null = null;
+
+  const openDay = () => {
+    const date = days.length
+      ? nextWorkday(days[days.length - 1].date)
+      : firstWorkday(start);
+    cur = { index: days.length + 1, date, hours: 0, portions: [] };
+  };
+
+  for (const w of works) {
+    let remaining = w.hours;
+    if (remaining <= 0) continue;
+    while (remaining > 0) {
+      if (!cur) openDay();
+      const day = cur!;
+      const take = Math.min(CAP - day.hours, remaining);
+      day.portions.push({
+        work: w,
+        hours: take,
+        total: w.hours,
+        partial: take < w.hours,
+      });
+      day.hours += take;
+      remaining -= take;
+      if (day.hours >= CAP) {
+        days.push(day);
+        cur = null;
+      }
+    }
+  }
+  if (cur) days.push(cur);
+  return days;
 }
 
 // Обратный отсчёт из миллисекунд: "01:23:45" или "23:45".
