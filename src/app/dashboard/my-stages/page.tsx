@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -22,7 +22,6 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
-  IconPlayerPlay,
   IconCheck,
   IconClipboardList,
   IconExternalLink,
@@ -33,46 +32,52 @@ import {
   IconHourglass,
   IconChevronRight,
   IconChevronDown,
+  IconCalendarEvent,
 } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
-import { Countdown } from "@/components/Countdown";
-import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
-import { formatDuration, formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
-interface MyStage {
+interface WagonInfo {
   id: string;
-  number: number;
   nameRu: string;
   nameUz: string | null;
-  durationSeconds: number;
-  status: "pending" | "awaiting" | "ready" | "blocked" | "in_progress" | "overdue" | "done";
-  myDecision: "pending" | "approved" | "denied";
-  // жму ли я «Старт» / «Завершить» (разрешение дают все назначенные, кнопки — эти)
-  canExecute: boolean;
-  myTurn: boolean;
-  approval: { total: number; approved: number };
-  deadline: number | null;
-  startedAt: string | null;
-  startedBy: { firstName: string; lastName: string; middleName: string | null } | null;
-  finishedAt: string | null;
-  finishedBy: { firstName: string; lastName: string; middleName: string | null } | null;
-  finishComment: string | null;
-  deniedBy: { name: string; comment: string | null } | null;
-  wagon: {
-    id: string;
-    nameRu: string;
-    nameUz: string | null;
-    number: string;
-    done: number;
-    total: number;
-    wagonType: { nameRu: string; nameUz: string | null };
-  };
+  number: string;
+  wagonType: { nameRu: string; nameUz: string | null };
+  done: number;
+  total: number;
 }
-
+interface TaskWork {
+  number: number;
+  nameRu: string | null;
+  nameUz: string;
+  seh: string | null;
+  workerCount: number | null;
+}
+interface Task {
+  wagon: WagonInfo;
+  stageId: string;
+  stageNumber: number;
+  stageNameRu: string;
+  stageNameUz: string | null;
+  dayIndex: number;
+  date: string;
+  works: TaskWork[];
+}
+interface MineStage {
+  stageId: string;
+  stageNumber: number;
+  stageNameRu: string;
+  stageNameUz: string | null;
+  status: "pending" | "in_progress" | "done" | "blocked";
+  locked: boolean;
+  acceptedDays: number;
+  totalDays: number;
+  wagon: WagonInfo;
+}
 interface MyCreation {
   wagonId: string;
   nameRu: string;
@@ -85,55 +90,25 @@ interface MyCreation {
   approval: { approved: number; total: number };
 }
 
-// Номер этапа — этапы идут цепочкой, номер важнее названия.
-function StageNum({ n, color }: { n: number; color: "steel" | "gray" }) {
-  return (
-    <Box
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        flex: "none",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: `var(--mantine-color-${color}-${color === "steel" ? 0 : 1})`,
-        color: `var(--mantine-color-${color}-${color === "steel" ? 7 : 6})`,
-        fontSize: 11,
-        fontWeight: 800,
-      }}
-    >
-      {n}
-    </Box>
-  );
-}
-
 export default function MyStagesPage() {
   const { t, lang } = useI18n();
-  const can = useCan();
-  // управляющий может жать кнопки, даже если не отмечен исполнителем
-  const isManager = can("wagons", "update");
-  const [stages, setStages] = useState<MyStage[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [mine, setMine] = useState<MineStage[]>([]);
   const [creations, setCreations] = useState<MyCreation[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const clockOffset = useRef(0);
 
-  const [denyStage, setDenyStage] = useState<MyStage | null>(null);
-  const [denyComment, setDenyComment] = useState("");
-  const [denySaving, setDenySaving] = useState(false);
+  // отказ в приёмке дня — причина обязательна
+  const [rejectTask, setRejectTask] = useState<Task | null>(null);
+  const [rejectComment, setRejectComment] = useState("");
+  const [rejectSaving, setRejectSaving] = useState(false);
 
-  // завершение с обязательной причиной отклонения от норматива
-  const [finishStage, setFinishStage] = useState<MyStage | null>(null);
-  const [finishComment, setFinishComment] = useState("");
-  const [finishSaving, setFinishSaving] = useState(false);
-
-  // отказ согласования создания
+  // отказ согласования создания вагона
   const [denyCreation, setDenyCreation] = useState<MyCreation | null>(null);
   const [cDenyComment, setCDenyComment] = useState("");
   const [cDenySaving, setCDenySaving] = useState(false);
 
-  // какие вагоны развернули — очередь по умолчанию свёрнута
+  // свёрнутые группы «в очереди»
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setOpened((prev) => {
@@ -146,12 +121,12 @@ export default function MyStagesPage() {
     if (!silent) setLoading(true);
     try {
       const r = await apiFetch<{
-        stages: MyStage[];
+        tasks: Task[];
+        mine: MineStage[];
         creations: MyCreation[];
-        serverNow: number;
       }>("/api/my-stages");
-      clockOffset.current = r.serverNow - Date.now();
-      setStages(r.stages);
+      setTasks(r.tasks ?? []);
+      setMine(r.mine ?? []);
       setCreations(r.creations ?? []);
     } catch (e: any) {
       notifications.show({ color: "red", message: e.message });
@@ -162,12 +137,11 @@ export default function MyStagesPage() {
 
   useEffect(() => {
     load();
-    // Не опрашиваем сервер, пока вкладка/приложение в фоне: в установленной PWA
-    // это лишняя нагрузка и память, из-за которой iOS быстрее убивает процесс.
-    const t = setInterval(() => {
+    // не опрашиваем сервер, пока вкладка/приложение в фоне
+    const timer = setInterval(() => {
       if (!document.hidden) load(true);
     }, 5000);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [load]);
 
   async function patch(stageId: string, body: any, key: string, okMsg: string) {
@@ -188,44 +162,32 @@ export default function MyStagesPage() {
     }
   }
 
-  async function submitFinish() {
-    if (!finishStage) return;
-    setFinishSaving(true);
-    const ok = await patch(
-      finishStage.id,
-      { action: "finish", comment: finishComment },
-      finishStage.id + "finish",
-      t("wd.finished")
+  // приёмка дня
+  function accept(task: Task) {
+    patch(
+      task.stageId,
+      { action: "signoff", dayIndex: task.dayIndex, decision: "accepted" },
+      `${task.stageId}-${task.dayIndex}`,
+      t("wd.signed")
     );
-    setFinishSaving(false);
+  }
+  async function submitReject() {
+    if (!rejectTask) return;
+    setRejectSaving(true);
+    const ok = await patch(
+      rejectTask.stageId,
+      { action: "signoff", dayIndex: rejectTask.dayIndex, decision: "rejected", comment: rejectComment },
+      `${rejectTask.stageId}-${rejectTask.dayIndex}`,
+      t("wd.rejected")
+    );
+    setRejectSaving(false);
     if (ok) {
-      setFinishStage(null);
-      setFinishComment("");
+      setRejectTask(null);
+      setRejectComment("");
     }
   }
 
-  async function submitDeny() {
-    if (!denyStage) return;
-    setDenySaving(true);
-    const ok = await patch(
-      denyStage.id,
-      { action: "deny", comment: denyComment },
-      "deny",
-      t("wd.denied")
-    );
-    setDenySaving(false);
-    if (ok) {
-      setDenyStage(null);
-      setDenyComment("");
-    }
-  }
-
-  async function patchCreation(
-    wagonId: string,
-    body: any,
-    key: string,
-    okMsg: string
-  ) {
+  async function patchCreation(wagonId: string, body: any, key: string, okMsg: string) {
     setBusy(key);
     try {
       await apiFetch(`/api/wagons/${wagonId}/creation`, {
@@ -242,7 +204,6 @@ export default function MyStagesPage() {
       setBusy(null);
     }
   }
-
   async function submitCreationDeny() {
     if (!denyCreation) return;
     setCDenySaving(true);
@@ -259,118 +220,20 @@ export default function MyStagesPage() {
     }
   }
 
-  const active = stages.filter((s) => s.status !== "done");
-  const finished = stages.filter((s) => s.status === "done");
+  // разделяем «мои позиции» на завершённые, в работе и в очереди
+  const taskStageIds = new Set(tasks.map((x) => x.stageId));
+  const doneStages = mine.filter((m) => m.status === "done");
+  const pending = mine.filter((m) => m.status !== "done" && !taskStageIds.has(m.stageId));
 
-  // Что я реально могу сделать ПРЯМО СЕЙЧАС. Всё остальное — ожидание,
-  // и вываливать его карточками бессмысленно: действий там нет.
-  function isActionable(s: MyStage) {
-    const canAct = s.canExecute || isManager;
-    if (s.status === "awaiting") return s.myDecision === "pending" && s.myTurn;
-    if (s.status === "ready") return canAct;
-    if (s.status === "in_progress" || s.status === "overdue") return canAct;
-    return false;
-  }
-
-  const waitingOnMe = active.filter(isActionable);
-  const queued = active.filter((s) => !isActionable(s));
-
-  // Остальное группируем по вагону — иначе его название повторяется 17 раз.
-  const groups = new Map<string, { wagon: MyStage["wagon"]; stages: MyStage[] }>();
-  for (const s of queued) {
+  // «в очереди» группируем по вагону
+  const groups = new Map<string, { wagon: WagonInfo; stages: MineStage[] }>();
+  for (const s of pending) {
     const g = groups.get(s.wagon.id) ?? { wagon: s.wagon, stages: [] };
     g.stages.push(s);
     groups.set(s.wagon.id, g);
   }
 
-  function renderActions(s: MyStage) {
-    // разрешение даю как все назначенные, а кнопки — только если я исполнитель
-    const canAct = s.canExecute || isManager;
-    if (s.status === "awaiting" && s.myDecision === "pending") {
-      return (
-        <Group gap="xs">
-          {s.myTurn ? (
-            <Button
-              color="teal"
-              leftSection={<IconThumbUp size={16} />}
-              loading={busy === s.id + "approve"}
-              onClick={() =>
-                patch(s.id, { action: "approve" }, s.id + "approve", t("wd.approved"))
-              }
-            >
-              {t("my.approve")}
-            </Button>
-          ) : (
-            <Badge color="gray" variant="light" leftSection={<IconHourglass size={12} />}>
-              {t("wd.waitTurn")}
-            </Badge>
-          )}
-          <Button
-            color="red"
-            variant="light"
-            leftSection={<IconThumbDown size={16} />}
-            onClick={() => {
-              setDenyStage(s);
-              setDenyComment("");
-            }}
-          >
-            {t("my.deny")}
-          </Button>
-        </Group>
-      );
-    }
-    if (s.status === "awaiting" && s.myDecision === "approved") {
-      return (
-        <Badge color="teal" variant="light" leftSection={<IconHourglass size={12} />}>
-          {t("my.waitingOthers", { a: s.approval.approved, t: s.approval.total })}
-        </Badge>
-      );
-    }
-    if (s.status === "ready") {
-      // не исполнитель — этап запустит тот, кто отмечен
-      if (!canAct) {
-        return (
-          <Badge color="gray" variant="light" leftSection={<IconHourglass size={12} />}>
-            {t("my.waitExecutor")}
-          </Badge>
-        );
-      }
-      return (
-        <Button
-          color="blue"
-          leftSection={<IconPlayerPlay size={16} />}
-          loading={busy === s.id + "start"}
-          onClick={() => patch(s.id, { action: "start" }, s.id + "start", t("wd.started"))}
-        >
-          {t("my.start")}
-        </Button>
-      );
-    }
-    if (s.status === "in_progress" || s.status === "overdue") {
-      if (!canAct) return null;
-      return (
-        <Button
-          color="teal"
-          leftSection={<IconCheck size={16} />}
-          loading={busy === s.id + "finish"}
-          onClick={() => {
-            setFinishStage(s);
-            setFinishComment("");
-          }}
-        >
-          {t("my.finish")}
-        </Button>
-      );
-    }
-    if (s.status === "blocked") {
-      return (
-        <Badge color="red" variant="light" leftSection={<IconLock size={12} />}>
-          {t("my.sstatus.blocked")}
-        </Badge>
-      );
-    }
-    return null;
-  }
+  const nothing = tasks.length === 0 && mine.length === 0 && creations.length === 0;
 
   return (
     <Page>
@@ -380,7 +243,7 @@ export default function MyStagesPage() {
         <Center py={60}>
           <Loader />
         </Center>
-      ) : stages.length === 0 && creations.length === 0 ? (
+      ) : nothing ? (
         <Card>
           <Center py={60}>
             <Stack align="center">
@@ -393,7 +256,7 @@ export default function MyStagesPage() {
         </Card>
       ) : (
         <Stack gap="xl">
-          {/* Согласование создания вагонов */}
+          {/* ── Согласование создания вагонов ── */}
           {creations.length > 0 && (
             <div>
               <Text fw={700} mb="sm">
@@ -427,10 +290,7 @@ export default function MyStagesPage() {
                     </Text>
                     <Group justify="space-between" align="center" mt="md" wrap="wrap">
                       <Text size="xs" c="dimmed">
-                        {t("wd.approvals", {
-                          a: c.approval.approved,
-                          t: c.approval.total,
-                        })}
+                        {t("wd.approvals", { a: c.approval.approved, t: c.approval.total })}
                       </Text>
                       {c.myDecision === "pending" ? (
                         c.myTurn ? (
@@ -468,10 +328,7 @@ export default function MyStagesPage() {
                           </Badge>
                         )
                       ) : (
-                        <Badge
-                          color={c.myDecision === "approved" ? "teal" : "red"}
-                          variant="light"
-                        >
+                        <Badge color={c.myDecision === "approved" ? "teal" : "red"} variant="light">
                           {t(`decision.${c.myDecision}`)}
                         </Badge>
                       )}
@@ -482,94 +339,160 @@ export default function MyStagesPage() {
             </div>
           )}
 
-          {active.length > 0 && (
+          {/* ── Что ждёт лично меня: конкретные дни на приёмку ── */}
+          {tasks.length === 0 ? (
+            mine.length > 0 && (
+              <Card
+                p="md"
+                withBorder
+                style={{ background: "var(--mantine-color-teal-0)", borderColor: "var(--mantine-color-teal-2)" }}
+              >
+                <Group gap="sm" wrap="nowrap">
+                  <ThemeIcon color="teal" variant="light" radius="xl" size={34}>
+                    <IconCheck size={18} />
+                  </ThemeIcon>
+                  <div>
+                    <Text fw={700} size="sm" c="teal.9">
+                      {t("my.nothingForYou")}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {t("my.nothingForYou.sub", { n: pending.length })}
+                    </Text>
+                  </div>
+                </Group>
+              </Card>
+            )
+          ) : (
             <div>
-              {/* ── Что ждёт лично меня ── */}
-              {waitingOnMe.length === 0 ? (
-                <Card p="md" withBorder style={{ background: "var(--mantine-color-teal-0)", borderColor: "var(--mantine-color-teal-2)" }}>
-                  <Group gap="sm" wrap="nowrap">
-                    <ThemeIcon color="teal" variant="light" radius="xl" size={34}>
-                      <IconCheck size={18} />
-                    </ThemeIcon>
-                    <div>
-                      <Text fw={700} size="sm" c="teal.9">
-                        {t("my.nothingForYou")}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {t("my.nothingForYou.sub", { n: active.length })}
-                      </Text>
-                    </div>
-                  </Group>
-                </Card>
-              ) : (
-                <Card p="lg" style={{ borderLeft: "4px solid var(--mantine-color-steel-6)" }}>
-                  <Text fw={800} size="15px">
-                    {t("my.waitingOnYou", { n: waitingOnMe.length })}
-                  </Text>
-                  <Text size="xs" c="dimmed" mb="xs">
-                    {t("my.waitingOnYou.sub")}
-                  </Text>
-                  <Stack gap={0}>
-                    {waitingOnMe.map((s, i) => (
-                      <motion.div
-                        key={s.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.06, duration: 0.3 }}
+              <Text fw={800} size="15px">
+                {t("my.waitingOnYou", { n: tasks.length })}
+              </Text>
+              <Text size="xs" c="dimmed" mb="sm">
+                {t("my.waitingOnYou.sub")}
+              </Text>
+              <Stack gap="md">
+                {tasks.map((task, i) => (
+                  <motion.div
+                    key={`${task.stageId}-${task.dayIndex}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(i * 0.05, 0.3), duration: 0.3 }}
+                  >
+                    <Card withBorder p="md" radius="md" style={{ borderLeft: "4px solid var(--mantine-color-steel-6)" }}>
+                      {/* вагон + позиция */}
+                      <Group justify="space-between" wrap="wrap" gap="xs" mb={8}>
+                        <div style={{ minWidth: 0 }}>
+                          <Text size="12px" c="dimmed">
+                            {pickName(task.wagon, lang)} · №{task.wagon.number}
+                          </Text>
+                          <Text fw={600} c="#25324d" style={{ wordBreak: "break-word" }}>
+                            {t("wd.stage", {
+                              number: task.stageNumber,
+                              name: pickName({ nameRu: task.stageNameRu, nameUz: task.stageNameUz }, lang),
+                            })}
+                          </Text>
+                        </div>
+                        <Button
+                          component={Link}
+                          href={`/dashboard/wagons/${task.wagon.id}`}
+                          variant="subtle"
+                          size="compact-xs"
+                          rightSection={<IconExternalLink size={12} />}
+                          style={{ flex: "none" }}
+                        >
+                          {t("my.wagonLink")}
+                        </Button>
+                      </Group>
+
+                      {/* день + дата */}
+                      <Group gap={7} wrap="nowrap" mb={8}>
+                        <ThemeIcon size={22} radius="sm" variant="light" color="steel">
+                          <IconCalendarEvent size={13} />
+                        </ThemeIcon>
+                        <Text size="sm" fw={600} c="steel.8">
+                          {t("wd.day", { n: task.dayIndex })} · {formatDate(task.date)}
+                        </Text>
+                      </Group>
+
+                      {/* работы этого дня (без часов) */}
+                      <Box
+                        p="xs"
+                        mb="sm"
+                        style={{ borderRadius: 8, background: "var(--mantine-color-gray-0)" }}
                       >
-                        <Group
-                          wrap="nowrap"
-                          gap="sm"
-                          py="sm"
-                          style={{
-                            borderBottom:
-                              i < waitingOnMe.length - 1
-                                ? "1px solid var(--mantine-color-gray-1)"
-                                : undefined,
+                        {task.works.map((w, wi) => (
+                          <Group key={wi} gap={8} wrap="nowrap" py={3} align="flex-start">
+                            <Text size="12.5px" c="gray.5" fw={600} w={14} ta="right" mt={2}>
+                              {w.number}
+                            </Text>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <Text size="13.5px" c="#3a465e" lh={1.45} style={{ wordBreak: "break-word" }}>
+                                {pickName(w, lang)}
+                              </Text>
+                              <Group gap={8} mt={3} wrap="wrap">
+                                {w.seh && (
+                                  <Text size="11.5px" c="steel.6" fw={600}>
+                                    {t("wd.sehShort", { n: w.seh })}
+                                  </Text>
+                                )}
+                                {!!w.workerCount && (
+                                  <Text size="11.5px" c="gray.6">
+                                    {t("wd.workers", { n: w.workerCount })}
+                                  </Text>
+                                )}
+                              </Group>
+                            </div>
+                          </Group>
+                        ))}
+                      </Box>
+
+                      {/* приёмка */}
+                      <Group justify="flex-end" gap="xs">
+                        <Button
+                          color="red"
+                          variant="subtle"
+                          leftSection={<IconThumbDown size={16} />}
+                          onClick={() => {
+                            setRejectTask(task);
+                            setRejectComment("");
                           }}
                         >
-                          <StageNum n={s.number} color="steel" />
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <Text size="13.5px" fw={600} truncate>
-                              {pickName(s, lang)}
-                            </Text>
-                            <Text size="11px" c="dimmed" truncate>
-                              {pickName(s.wagon, lang)} №{s.wagon.number} ·{" "}
-                              {t("wd.norm", { dur: formatDuration(s.durationSeconds, lang) })}
-                            </Text>
-                          </div>
-                          {(s.status === "in_progress" || s.status === "overdue") &&
-                            s.deadline && (
-                              <Countdown
-                                deadline={s.deadline}
-                                durationSeconds={s.durationSeconds}
-                                clockOffset={clockOffset.current}
-                              />
-                            )}
-                          {renderActions(s)}
-                        </Group>
-                      </motion.div>
-                    ))}
-                  </Stack>
-                </Card>
-              )}
+                          {t("wd.reject")}
+                        </Button>
+                        <Button
+                          color="teal"
+                          leftSection={<IconCheck size={16} />}
+                          loading={busy === `${task.stageId}-${task.dayIndex}`}
+                          onClick={() => accept(task)}
+                        >
+                          {t("wd.sign")}
+                        </Button>
+                      </Group>
+                    </Card>
+                  </motion.div>
+                ))}
+              </Stack>
+            </div>
+          )}
 
-              {/* ── Остальное: по вагонам, очередь свёрнута ── */}
-              {[...groups.values()].map((g, gi) => {
-                const blocked = g.stages.find((s) => s.status === "blocked");
-                const queue = g.stages.filter((s) => s.status !== "blocked");
-                const isOpen = opened.has(g.wagon.id);
-                const from = queue[0]?.number;
-                const to = queue[queue.length - 1]?.number;
-                return (
-                  <motion.div
-                    key={g.wagon.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 + gi * 0.07, duration: 0.3 }}
-                  >
-                    <Card p="lg" mt="md">
-                      <Group justify="space-between" wrap="nowrap" mb="sm" pb="sm" style={{ borderBottom: "1px solid var(--mantine-color-gray-1)" }}>
+          {/* ── В работе / в очереди: мои позиции без действий прямо сейчас ── */}
+          {groups.size > 0 && (
+            <div>
+              <Text fw={700} mb="sm">
+                {t("my.inProgress")}
+              </Text>
+              <Stack gap="md">
+                {[...groups.values()].map((g) => {
+                  const isOpen = opened.has(g.wagon.id);
+                  return (
+                    <Card key={g.wagon.id} p="lg">
+                      <Group
+                        justify="space-between"
+                        wrap="nowrap"
+                        pb="sm"
+                        mb="sm"
+                        style={{ borderBottom: "1px solid var(--mantine-color-gray-1)" }}
+                      >
                         <div style={{ minWidth: 0 }}>
                           <Text fw={800} size="15px" truncate>
                             {pickName(g.wagon, lang)} · №{g.wagon.number}
@@ -591,170 +514,111 @@ export default function MyStagesPage() {
                         </Button>
                       </Group>
 
-                      {/* Почему всё стоит */}
-                      {blocked && (
-                        <Alert
-                          color="red"
-                          variant="light"
-                          icon={<IconLock size={16} />}
-                          mb={queue.length ? "sm" : 0}
-                          title={t("my.blockedTitle", { n: blocked.number })}
+                      <UnstyledButton onClick={() => toggle(g.wagon.id)} w="100%">
+                        <Group
+                          gap={8}
+                          p={11}
+                          style={{
+                            borderRadius: 10,
+                            background: "var(--mantine-color-gray-0)",
+                            border: "1px dashed var(--mantine-color-gray-3)",
+                          }}
                         >
-                          <Text size="xs">
-                            {blocked.deniedBy && (
-                              <>
-                                {t("home.att.by", { who: blocked.deniedBy.name })}
-                                {blocked.deniedBy.comment && `: «${blocked.deniedBy.comment}»`}
-                                <br />
-                              </>
-                            )}
-                            {queue.length > 0 && (
-                              <Text span fw={600}>
-                                {t("my.blockedTail", { n: queue.length })}
-                              </Text>
-                            )}
+                          {isOpen ? (
+                            <IconChevronDown size={14} color="var(--mantine-color-gray-6)" />
+                          ) : (
+                            <IconChevronRight size={14} color="var(--mantine-color-gray-6)" />
+                          )}
+                          <Text size="xs" c="dimmed">
+                            {t("my.myStagesCount", { n: g.stages.length })}
                           </Text>
-                        </Alert>
-                      )}
+                          <Text size="xs" fw={700} c="steel.6">
+                            {isOpen ? t("my.hide") : t("my.show")}
+                          </Text>
+                        </Group>
+                      </UnstyledButton>
 
-                      {/* Очередь — свёрнута, потому что действий там нет */}
-                      {queue.length > 0 && (
-                        <>
-                          <UnstyledButton onClick={() => toggle(g.wagon.id)} w="100%">
+                      <Collapse in={isOpen}>
+                        <Stack gap={0} mt={4}>
+                          {g.stages.map((s, i) => (
                             <Group
-                              gap={8}
-                              p={11}
+                              key={s.stageId}
+                              wrap="nowrap"
+                              gap="sm"
+                              py={9}
+                              align="flex-start"
                               style={{
-                                borderRadius: 10,
-                                background: "var(--mantine-color-gray-0)",
-                                border: "1px dashed var(--mantine-color-gray-3)",
+                                borderBottom:
+                                  i < g.stages.length - 1
+                                    ? "1px solid var(--mantine-color-gray-1)"
+                                    : undefined,
                               }}
                             >
-                              {isOpen ? (
-                                <IconChevronDown size={14} color="var(--mantine-color-gray-6)" />
-                              ) : (
-                                <IconChevronRight size={14} color="var(--mantine-color-gray-6)" />
+                              <ThemeIcon
+                                size={26}
+                                radius="sm"
+                                variant="light"
+                                color={s.status === "blocked" ? "red" : s.locked ? "gray" : "steel"}
+                              >
+                                {s.locked ? <IconLock size={13} /> : <Text size="11px" fw={800}>{s.stageNumber}</Text>}
+                              </ThemeIcon>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <Text size="13px" c="#25324d" style={{ wordBreak: "break-word" }}>
+                                  {pickName({ nameRu: s.stageNameRu, nameUz: s.stageNameUz }, lang)}
+                                </Text>
+                                <Text size="11px" c="dimmed">
+                                  {s.locked
+                                    ? t("my.locked", { n: s.stageNumber - 1 })
+                                    : t("my.acceptedDays", { a: s.acceptedDays, t: s.totalDays })}
+                                </Text>
+                              </div>
+                              {s.status === "blocked" && (
+                                <Badge color="red" variant="light" size="sm" style={{ flex: "none" }}>
+                                  {t("sstatus.blocked")}
+                                </Badge>
                               )}
-                              <Text size="xs" c="dimmed">
-                                {t("my.queued", { n: queue.length, from, to })}
-                              </Text>
-                              <Text size="xs" fw={700} c="steel.6">
-                                {isOpen ? t("my.hide") : t("my.show")}
-                              </Text>
                             </Group>
-                          </UnstyledButton>
-
-                          <Collapse in={isOpen}>
-                            <Stack gap={0} mt={4}>
-                              {queue.map((s, i) => (
-                                <Group
-                                  key={s.id}
-                                  wrap="nowrap"
-                                  gap="sm"
-                                  py={9}
-                                  style={{
-                                    borderBottom:
-                                      i < queue.length - 1
-                                        ? "1px solid var(--mantine-color-gray-1)"
-                                        : undefined,
-                                  }}
-                                >
-                                  <StageNum n={s.number} color="gray" />
-                                  <div style={{ minWidth: 0, flex: 1 }}>
-                                    <Text size="13px" truncate>
-                                      {pickName(s, lang)}
-                                    </Text>
-                                    <Text size="11px" c="dimmed" truncate>
-                                      {t("my.waitsFor", { n: s.number - 1 })}
-                                    </Text>
-                                  </div>
-                                  {renderActions(s)}
-                                </Group>
-                              ))}
-                            </Stack>
-                          </Collapse>
-                        </>
-                      )}
+                          ))}
+                        </Stack>
+                      </Collapse>
                     </Card>
-                  </motion.div>
-                );
-              })}
+                  );
+                })}
+              </Stack>
             </div>
           )}
 
-          {finished.length > 0 && (
+          {/* ── Завершённые мной позиции ── */}
+          {doneStages.length > 0 && (
             <div>
               <Text fw={700} mb="sm">
-                {t("my.finished", { n: finished.length })}
+                {t("my.finished", { n: doneStages.length })}
               </Text>
               <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
-                {finished.map((s) => (
+                {doneStages.map((s) => (
                   <Card
-                    key={s.id}
+                    key={s.stageId}
                     p="md"
                     withBorder
-                    style={{
-                      borderLeft: "4px solid var(--mantine-color-teal-6)",
-                    }}
+                    style={{ borderLeft: "4px solid var(--mantine-color-teal-6)" }}
                   >
                     <Group gap="xs" wrap="nowrap" align="flex-start">
                       <ThemeIcon color="teal" variant="light" radius="xl">
                         <IconCheck size={16} />
                       </ThemeIcon>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <Text size="sm" fw={600}>
-                          {t("wd.stage", { number: s.number, name: pickName(s, lang) })}
+                        <Text size="sm" fw={600} style={{ wordBreak: "break-word" }}>
+                          {t("wd.stage", {
+                            number: s.stageNumber,
+                            name: pickName({ nameRu: s.stageNameRu, nameUz: s.stageNameUz }, lang),
+                          })}
                         </Text>
                         <Text size="xs" c="dimmed">
                           {pickName(s.wagon, lang)} · № {s.wagon.number}
                         </Text>
-                        {s.startedBy && s.startedAt && (
-                          <Text size="xs" c="dimmed" mt={4}>
-                            {t("wd.startedBy")}:{" "}
-                            <Text span fw={600} c="dark">
-                              {[
-                                s.startedBy.lastName,
-                                s.startedBy.firstName,
-                                s.startedBy.middleName,
-                              ]
-                                .filter(Boolean)
-                                .join(" ")}
-                            </Text>{" "}
-                            · {formatDateTime(s.startedAt)}
-                          </Text>
-                        )}
-                        {s.finishedBy && s.finishedAt && (
-                          <Text size="xs" c="dimmed" mt={4}>
-                            {t("wd.finishedBy")}:{" "}
-                            <Text span fw={600} c="dark">
-                              {[
-                                s.finishedBy.lastName,
-                                s.finishedBy.firstName,
-                                s.finishedBy.middleName,
-                              ]
-                                .filter(Boolean)
-                                .join(" ")}
-                            </Text>{" "}
-                            · {formatDateTime(s.finishedAt)}
-                          </Text>
-                        )}
-                        {s.finishedAt &&
-                          s.deadline &&
-                          (() => {
-                            const late =
-                              new Date(s.finishedAt).getTime() > s.deadline;
-                            return (
-                              <Text
-                                size="11px"
-                                mt={4}
-                                fw={600}
-                                c={late ? "red" : "teal"}
-                              >
-                                {late ? t("wd.finishLate") : t("wd.finishEarly")}
-                                {s.finishComment ? ` · «${s.finishComment}»` : ""}
-                              </Text>
-                            );
-                          })()}
+                        <Text size="11px" c="teal.7" mt={4}>
+                          {t("wd.stageDone")}
+                        </Text>
                       </div>
                     </Group>
                   </Card>
@@ -765,80 +629,37 @@ export default function MyStagesPage() {
         </Stack>
       )}
 
-      {/* Завершение — обязательна причина отклонения от норматива */}
+      {/* Отказ в приёмке дня — причина обязательна */}
       <Modal
-        opened={!!finishStage}
-        onClose={() => setFinishStage(null)}
-        title={finishStage ? t("wd.finishTitle", { number: finishStage.number }) : ""}
+        opened={!!rejectTask}
+        onClose={() => setRejectTask(null)}
+        title={t("wd.rejectTitle")}
+        radius="md"
       >
         <Stack>
-          {finishStage &&
-            (() => {
-              const planned = finishStage.deadline;
-              const late = planned != null && Date.now() > planned;
-              return (
-                <Alert
-                  color={late ? "red" : "teal"}
-                  variant="light"
-                  icon={<IconAlertTriangle size={16} />}
-                  title={late ? t("wd.finishLate") : t("wd.finishEarly")}
-                >
-                  {planned && (
-                    <Text size="sm">
-                      {t("wd.finishPlanned")}:{" "}
-                      <Text span fw={600}>
-                        {formatDateTime(new Date(planned))}
-                      </Text>
-                    </Text>
-                  )}
-                  <Text size="sm">{t("wd.finishReasonHint")}</Text>
-                </Alert>
-              );
-            })()}
-          <Textarea
-            label={t("wd.finishReason")}
-            placeholder={t("wd.finishPlaceholder")}
-            minRows={3}
-            autosize
-            withAsterisk
-            value={finishComment}
-            onChange={(e) => setFinishComment(e.currentTarget.value)}
-          />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setFinishStage(null)}>
-              {t("common.cancel")}
-            </Button>
-            <Button color="teal" onClick={submitFinish} loading={finishSaving}>
-              {t("my.finish")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal
-        opened={!!denyStage}
-        onClose={() => setDenyStage(null)}
-        title={denyStage ? t("wd.denyTitle", { number: denyStage.number }) : ""}
-      >
-        <Stack>
-          <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
-            {t("wd.denyAlert")}
+          <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} p="sm">
+            <Text size="sm">{t("wd.rejectAlert")}</Text>
           </Alert>
           <Textarea
-            label={t("wd.denyReason")}
-            placeholder={t("wd.denyPlaceholder")}
+            label={t("wd.rejectReason")}
+            placeholder={t("wd.rejectPlaceholder")}
             minRows={3}
             autosize
             withAsterisk
-            value={denyComment}
-            onChange={(e) => setDenyComment(e.currentTarget.value)}
+            value={rejectComment}
+            onChange={(e) => setRejectComment(e.currentTarget.value)}
           />
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDenyStage(null)}>
+            <Button variant="default" onClick={() => setRejectTask(null)}>
               {t("common.cancel")}
             </Button>
-            <Button color="red" onClick={submitDeny} loading={denySaving}>
-              {t("my.deny")}
+            <Button
+              color="red"
+              onClick={submitReject}
+              loading={rejectSaving}
+              disabled={rejectComment.trim().length < 3}
+            >
+              {t("wd.reject")}
             </Button>
           </Group>
         </Stack>
