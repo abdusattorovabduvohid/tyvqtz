@@ -1,4 +1,4 @@
-// Официальный план сборки пассажирского вагона (07.08.2026) — 10 позиций, 27 дней.
+// Официальный план сборки пассажирского вагона (10.08.2026) — 10 позиций, 27 дней.
 //
 // МОДЕЛЬ КАК В БУМАГЕ: у каждой работы своя колонка «Kun/День» — 1, 2 или 3.
 // Работы разных цехов идут ПАРАЛЛЕЛЬНО, поэтому длительность позиции =
@@ -49,13 +49,12 @@ const POSITIONS = [
       w("Urilib-tortish uskunalari, avtoulagich va bufer uskunalarini o‘rnatish", "Установка ударно-тяговых приборов, автосцепных и буферных устройств", 8, 8, "23", 1),
       w("Tormoz qurilmalarini o‘rnatish, tormoz magistralini va tormoz kranlarini montaj qilish", "Установка тормозных приборов, монтаж тормозной магистрали и стоп кранов", 8, 8, "23", 2),
       w("Richagli uzatmani montaj qilish, aravachalarni vagon ostiga kiritish va o‘rnatish", "Монтаж рычажной передачи. Подкатка тележек под вагон", 8, 8, "23", 3),
-      w("Plastik qoplamali devorlarni o‘rnatish", "Установка перегородок с пластиком", 6, 16, "2", 1, 2),
-      // в бумаге у этой строки колонка «День» не заполнена — ставим 1-й день
-      w("Yon devor issiqlik izolyatsiyasini o‘rnatish", "Установка теплоизоляции боковин", 6, 8, "15", 1),
+      w("Yon devor issiqlik izolyatsiyasini o‘rnatish", "Установка теплоизоляции боковин", 6, 8, "2", 1),
+      w("Plastik qoplamali devorlarni o‘rnatish", "Установка перегородок с пластиком", 6, 16, "15", 2, 3),
       w("Vagon ichki elektr magistrali quvurlari, vagon osti qutilari (past kuchlanishli, kirish, yuqori kuchlanishli, ChO‘) va generatorini montaj qilish", "Монтаж труб внутривагонной электромагистрали, подвагонных ящиков (низковольтный, вводной, высоковольтный, ПЧ) и генератора", 8, 8, "28", 1),
       w("EPT va SKNB quvurlarini montaj qilish, telejkada elektr quvurlari va simlarini o‘rnatish", "Монтаж труб ЭПТ и СКНБ, электропроводки и проводов на тележке", 5, 4, "28", 2),
       w("Yuqori kuchlanishli magistral 3000 V quvurlarini montaj qilish", "Монтаж труб высоковольтной магистрали 3000 В", 5, 4, "28", 2),
-      w("Kupe bo‘ylab elektr qutilari va quvurlarni o‘rnatish. Past kuchlanishli TEN simlari uchun quvurlar", "Установка эл. коробов и труб по купе. Установка труб для проводов низковольтных ТЭНов", 3, 6, "28", 2),
+      w("Kupe bo‘ylab elektr qutilari va quvurlarni o‘rnatish. Past kuchlanishli TEN simlari uchun quvurlar", "Установка эл. коробов и труб по купе. Установка труб для проводов низковольтных ТЭНов", 3, 6, "28", 1),
       w("ETXJ bakini va unga boruvchi quvurlarni o‘rnatish. Yuqori isitish quvurlarini o‘rnatish", "Установка бака ЭЧТК и подводящих труб. Установка верхних труб отопления", 4, 6, "6", 2),
       w("ETXJ vagonosti quvurlarni o‘rnatish", "Установка подвагонных труб ЭЧТК", 5, 2, "28", 3),
     ],
