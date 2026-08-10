@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser, handleError, ApiError } from "@/lib/api";
 import { can } from "@/lib/permissions";
+import { notifyUsers, notifyUsersAndGroup, personName } from "@/lib/notify";
 
 const schema = z.object({
   action: z.enum(["approve", "deny", "reset"]),
@@ -63,6 +64,17 @@ export async function PATCH(req: Request, { params }: Params) {
           data: { creationStatus: "rejected" },
         }),
       ]);
+
+      // отказ — новость для всех, кто причастен к вагону
+      const others = wagon.creationApprovals
+        .filter((a) => a.userId !== user.id)
+        .map((a) => a.userId);
+      await notifyUsersAndGroup(others, {
+        title: `Vagon №${wagon.number} — rad etildi`,
+        body: `${personName(user)} kelishuvni rad etdi. Sabab: ${text}`,
+        url: `/dashboard/wagons/${wagon.id}`,
+        tag: `wagon-denied-${wagon.id}`,
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -88,6 +100,42 @@ export async function PATCH(req: Request, { params }: Params) {
         where: { id: wagon.id },
         data: { creationStatus: "approved" },
       });
+    }
+
+    const link = `/dashboard/wagons/${wagon.id}`;
+    if (allApproved) {
+      // вагон пошёл в работу: зовём ответственных за 1-ю позицию
+      const first = await prisma.wagonStage.findFirst({
+        where: { wagonId: wagon.id },
+        orderBy: { number: "asc" },
+        include: { assignments: { select: { userId: true } } },
+      });
+      const people = [
+        ...(first?.assignments.map((a) => a.userId) ?? []),
+        ...wagon.creationApprovals.map((a) => a.userId),
+      ];
+      await notifyUsersAndGroup(people, {
+        title: `Vagon №${wagon.number} — ish boshlandi`,
+        body: first
+          ? `Kelishuv tugadi. ${first.number}-pozitsiya «${first.nameUz}» ochildi.`
+          : "Kelishuv tugadi, vagon ishga qo‘yildi.",
+        url: link,
+        tag: `wagon-active-${wagon.id}`,
+      });
+    } else {
+      // очередь идёт дальше — пишем следующему согласующему
+      const next = wagon.creationApprovals
+        .filter((a) => a.id !== mine.id && a.decision === "pending")
+        .sort((a, b) => a.order - b.order)
+        .find((a) => a.order > mine.order);
+      if (next) {
+        await notifyUsers([next.userId], {
+          title: `Vagon №${wagon.number} — navbat sizda`,
+          body: `${personName(user)} tasdiqladi. Endi sizning tasdig‘ingiz kutilmoqda.`,
+          url: link,
+          tag: `wagon-approval-${wagon.id}`,
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, activated: allApproved });

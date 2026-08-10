@@ -97,6 +97,60 @@ async function staleWhileRevalidate(request, cacheName) {
   return hit || fetching;
 }
 
+// ─────────────────────── Уведомления (Web Push) ───────────────────────
+// Сервер шлёт JSON { title, body, url, tag }. Показываем системное
+// уведомление — оно приходит и на заблокированный экран телефона.
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+
+  const title = data.title || "TYVQTZ";
+  const options = {
+    body: data.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    // одинаковый tag заменяет прошлое уведомление, а не копит их пачкой
+    tag: data.tag || "tyvqtz",
+    renotify: Boolean(data.tag),
+    data: { url: data.url || "/dashboard" },
+    // короткая вибрация: в цехе шумно, звук не слышно
+    vibrate: [120, 60, 120],
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Клик по уведомлению: если вкладка/PWA уже открыта — переводим её на нужный
+// адрес, иначе открываем новое окно. Иначе у сотрудника плодятся вкладки.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/dashboard";
+
+  event.waitUntil(
+    (async () => {
+      const url = new URL(target, self.location.origin).href;
+      const clientList = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clientList) {
+        if (new URL(client.url).origin !== self.location.origin) continue;
+        if ("navigate" in client) {
+          await client.navigate(url);
+          return client.focus();
+        }
+        return client.focus();
+      }
+      return self.clients.openWindow(url);
+    })(),
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;

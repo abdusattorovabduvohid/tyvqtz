@@ -26,10 +26,12 @@ import {
   IconChevronRight,
   IconLayoutDashboard,
   IconClipboardList,
+  IconBell,
 } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/client";
 import { UserProvider, type ClientUser } from "./UserContext";
+import { PushAutoHeal } from "./PushAutoHeal";
 import { useI18n } from "./I18nProvider";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Logo } from "./Logo";
@@ -38,6 +40,7 @@ import { pickName } from "@/lib/i18n/translations";
 const ICONS: Record<string, React.ReactNode> = {
   dashboard: <IconLayoutDashboard size={20} />,
   "my-stages": <IconClipboardList size={20} />,
+  notifications: <IconBell size={20} />,
   users: <IconUsers size={20} />,
   roles: <IconShieldHalf size={20} />,
   "wagon-types": <IconTrain size={20} />,
@@ -69,13 +72,16 @@ export function DashboardShell({
   const navLabel = (key: string) => {
     if (key === "dashboard") return t("shell.home");
     if (key === "my-stages") return t("shell.myStages");
+    if (key === "notifications") return t("notif.title");
     return t(`sections.${key}`);
   };
 
+  // Уведомления — личная настройка, права на неё не нужны: пункт есть у всех
   const items: NavItem[] = [
     { key: "dashboard", label: "", href: "/dashboard" },
     { key: "my-stages", label: "", href: "/dashboard/my-stages" },
     ...nav,
+    { key: "notifications", label: "", href: "/dashboard/notifications" },
   ];
 
   async function logout() {
@@ -91,6 +97,8 @@ export function DashboardShell({
 
   return (
     <UserProvider user={user}>
+      {/* чинит подписку на уведомления, если на сервере сменился VAPID-ключ */}
+      <PushAutoHeal />
       <AppShell
         header={{ height: 64 }}
         navbar={{
@@ -159,6 +167,13 @@ export function DashboardShell({
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Label>{fullName}</Menu.Label>
+                <Menu.Item
+                  component={Link}
+                  href="/dashboard/notifications"
+                  leftSection={<IconBell size={16} />}
+                >
+                  {t("notif.title")}
+                </Menu.Item>
                 <Menu.Item
                   color="red"
                   leftSection={<IconLogout size={16} />}

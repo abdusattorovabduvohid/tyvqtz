@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
 import { computeWagonStatus } from "@/lib/wagon";
 import { wagonSchedule, stageWorkdays, businessDaysUntil } from "@/lib/format";
+import { notifyUsers, notifyUsersAndGroup } from "@/lib/notify";
 
 const createSchema = z.object({
   nameUz: z.string().min(1, "Введите название вагона"),
@@ -238,6 +239,8 @@ export async function POST(req: Request) {
                 hours: w.hours,
                 seh: w.seh,
                 workerCount: w.workerCount,
+                dayFrom: w.dayFrom,
+                dayTo: w.dayTo,
               })),
             },
             assignments: {
@@ -252,6 +255,28 @@ export async function POST(req: Request) {
       },
       include: { stages: true },
     });
+
+    // Уведомления: первому согласующему — «ждём вас», остальным — «вагон
+    // создан». Ошибки отправки внутрь запроса не выпускаются.
+    const firstApprover = approverIds[0];
+    await notifyUsersAndGroup(
+      [firstApprover],
+      {
+        title: `Vagon №${wagon.number} — kelishuv kutilmoqda`,
+        body: `«${wagon.nameUz}» yaratildi. Sizning tasdig‘ingiz kerak.`,
+        url: `/dashboard/wagons/${wagon.id}`,
+        tag: `wagon-approval-${wagon.id}`,
+      }
+    );
+    await notifyUsers(
+      [...userIds, ...approverIds.slice(1)],
+      {
+        title: `Yangi vagon №${wagon.number}`,
+        body: `«${wagon.nameUz}» yaratildi, siz mas’ul sifatida belgilandingiz.`,
+        url: `/dashboard/wagons/${wagon.id}`,
+        tag: `wagon-new-${wagon.id}`,
+      }
+    );
 
     return NextResponse.json({ wagon }, { status: 201 });
   } catch (err) {

@@ -5,6 +5,7 @@ import { requireUser, handleError, ApiError } from "@/lib/api";
 import { can } from "@/lib/permissions";
 import { computeApproval } from "@/lib/wagon";
 import { stageWorkdays } from "@/lib/format";
+import { notifyUsers, notifyUsersAndGroup, personName } from "@/lib/notify";
 
 const schema = z.object({
   action: z.enum([
@@ -58,6 +59,100 @@ async function recomputeStageStatus(stageId: string) {
       finishedAt: status === "done" ? st.finishedAt ?? new Date() : null,
     },
   });
+
+  return status;
+}
+
+// Кому написать после приёмки дня. Правило: беспокоим только тех, от кого
+// сейчас что-то зависит, плюс общий чат — на плохие новости и на закрытие
+// позиции. Сам подписавший уведомление не получает.
+async function notifyAfterSignoff(
+  stageId: string,
+  actor: { id: string; firstName: string; lastName: string },
+  dayIndex: number,
+  decision: "accepted" | "rejected" | "none",
+  comment: string,
+  newStatus: string
+) {
+  if (decision === "none") return; // снял свою подпись — это не новость
+
+  const st = await prisma.wagonStage.findUnique({
+    where: { id: stageId },
+    include: {
+      assignments: { orderBy: { order: "asc" } },
+      daySignoffs: true,
+      wagon: { select: { id: true, number: true } },
+    },
+  });
+  if (!st) return;
+
+  const link = `/dashboard/wagons/${st.wagon.id}`;
+  const head = `Vagon №${st.wagon.number} — ${st.number}-pozitsiya`;
+  const others = st.assignments
+    .map((a) => a.userId)
+    .filter((id) => id !== actor.id);
+
+  if (decision === "rejected") {
+    await notifyUsersAndGroup(others, {
+      title: `${head}: ${dayIndex}-kun qabul qilinmadi`,
+      body: `${personName(actor)}: ${comment}`,
+      url: link,
+      tag: `day-rejected-${st.id}-${dayIndex}`,
+    });
+    return;
+  }
+
+  const acceptedBy = (day: number, uid: string) =>
+    st.daySignoffs.some(
+      (s) => s.dayIndex === day && s.userId === uid && s.decision === "accepted"
+    );
+  const dayFull = st.assignments.every((a) => acceptedBy(dayIndex, a.userId));
+
+  // день ещё не закрыт — зовём следующего по очереди
+  if (!dayFull) {
+    const next = st.assignments.find((a) => !acceptedBy(dayIndex, a.userId));
+    if (next) {
+      await notifyUsers([next.userId], {
+        title: `${head}: navbat sizda`,
+        body: `${personName(actor)} ${dayIndex}-kunni qabul qildi. Endi sizning imzongiz kutilmoqda.`,
+        url: link,
+        tag: `day-turn-${st.id}-${dayIndex}`,
+      });
+    }
+    return;
+  }
+
+  // позиция закрыта целиком — следующая открывается
+  if (newStatus === "done") {
+    const next = await prisma.wagonStage.findFirst({
+      where: { wagonId: st.wagonId, number: st.number + 1 },
+      include: { assignments: { select: { userId: true } } },
+    });
+    await notifyUsersAndGroup(
+      [...others, ...(next?.assignments.map((a) => a.userId) ?? [])],
+      {
+        title: `Vagon №${st.wagon.number} — ${st.number}-pozitsiya tugadi`,
+        body: next
+          ? `Endi ${next.number}-pozitsiya «${next.nameUz}» ochildi.`
+          : "Vagonning barcha pozitsiyalari tugadi.",
+        url: link,
+        tag: `stage-done-${st.id}`,
+      }
+    );
+    return;
+  }
+
+  // день закрыт, позиция продолжается — открылся следующий день
+  const totalDays = stageWorkdays(st.durationSeconds);
+  await notifyUsers(others, {
+    title: `${head}: ${dayIndex}-kun qabul qilindi`,
+    body:
+      dayIndex < totalDays
+        ? `${dayIndex + 1}-kun ochildi (jami ${totalDays} kun).`
+        : `Barcha kunlar qabul qilindi (${totalDays}).`,
+    url: link,
+    tag: `day-done-${st.id}-${dayIndex}`,
+  });
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -109,6 +204,19 @@ export async function PATCH(req: Request, { params }: Params) {
             data: { status: "blocked" },
           }),
         ]);
+        const wagon = await prisma.wagon.findUnique({
+          where: { id: stage.wagonId },
+          select: { number: true },
+        });
+        await notifyUsersAndGroup(
+          stage.assignments.map((a) => a.userId).filter((id) => id !== user.id),
+          {
+            title: `Vagon №${wagon?.number ?? ""} — ${stage.number}-pozitsiya to‘xtatildi`,
+            body: `${personName(user)} ruxsat bermadi. Sabab: ${text}`,
+            url: `/dashboard/wagons/${stage.wagonId}`,
+            tag: `stage-blocked-${stage.id}`,
+          }
+        );
         return NextResponse.json({ ok: true });
       }
       // approve — строго по очереди: предыдущие (по order) должны уже одобрить
@@ -215,7 +323,15 @@ export async function PATCH(req: Request, { params }: Params) {
         });
       }
 
-      await recomputeStageStatus(stage.id);
+      const newStatus = await recomputeStageStatus(stage.id);
+      await notifyAfterSignoff(
+        stage.id,
+        user,
+        dayIndex,
+        dec,
+        (comment ?? "").trim(),
+        newStatus ?? stage.status
+      );
       return NextResponse.json({ ok: true });
     }
 
