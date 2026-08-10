@@ -43,6 +43,14 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // ── Уведомления ──
+  // chat id в телеграме; пусто — телеграм не подключён
+  telegramChatId   String? @unique
+  telegramUsername String?
+  // одноразовый код для команды /start <код> в боте
+  telegramLinkCode String? @unique
+
+  pushSubscriptions      PushSubscription[]
   assignedWagonStages    WagonStageAssignment[]
   startedStages          WagonStage[]            @relation("StageStartedBy")
   finishedStages         WagonStage[]            @relation("StageFinishedBy")
@@ -92,6 +100,11 @@ model StageWork {
   hours       Float // «Время работа»: 12ч, 2ч …
   seh         String? // цех этой работы — в бумаге у каждой работы свой (№8, №2 …)
   workerCount Int? // количество работников на работу
+  // «День» из бумаги: в какие рабочие дни позиции делается эта работа.
+  // 1 день → dayFrom = dayTo = 1; «2-кун 3-кун» → dayFrom 2, dayTo 3.
+  // null у старых строк — тогда дни считаются по-старому (8 ч = 1 день).
+  dayFrom     Int?
+  dayTo       Int?
 
   @@unique([stageId, number])
 }
@@ -194,6 +207,9 @@ model WagonStageWork {
   hours        Float
   seh          String?
   workerCount  Int?
+  // «День» из бумаги — как в StageWork (см. комментарий там)
+  dayFrom      Int?
+  dayTo        Int?
 
   @@unique([wagonStageId, number])
 }
@@ -219,4 +235,28 @@ model WagonStageAssignment {
   canExecute Boolean @default(true)
 
   @@unique([wagonStageId, userId])
+}
+
+// ──────────────────────────── Уведомления ────────────────────────────
+
+// Подписка браузера на Web Push. У одного человека их несколько:
+// телефон, рабочий компьютер, планшет — каждое устройство своя запись.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // адрес push-сервиса браузера — он же уникальный ключ устройства
+  endpoint  String   @unique
+  p256dh    String // ключ шифрования из подписки
+  auth      String // секрет из подписки
+  userAgent String? // чтобы человек узнал своё устройство в списке
+  createdAt DateTime @default(now())
+  // когда последний раз успешно доставили — по нему чистим мёртвые подписки
+  lastOkAt  DateTime @default(now())
+  // подряд идущие отказы push-сервиса (401/403 — не тот VAPID-ключ и т.п.).
+  // Сразу не удаляем: ключ мог временно не подхватиться на сервере. После
+  // порога подписку выкидываем, а браузер переоформит её сам (PushAutoHeal).
+  failCount Int      @default(0)
+
+  @@index([userId])
 }

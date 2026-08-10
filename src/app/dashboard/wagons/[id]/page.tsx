@@ -73,6 +73,9 @@ interface StageWork {
   hours: number;
   seh: string | null;
   workerCount: number | null;
+  // «День» из бумаги: в какие дни позиции идёт работа (null — старые данные)
+  dayFrom: number | null;
+  dayTo: number | null;
 }
 // подпись одного дня одним человеком
 interface Signoff {

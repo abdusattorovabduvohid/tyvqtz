@@ -13,7 +13,7 @@ const createSchema = z.object({
   nameUz: z.string().min(1, "Введите название позиции"),
   nameRu: z.string().optional().nullable(),
   note: z.string().optional().nullable(),
-  // срок позиции считается из суммы часов работ
+  // срок позиции считается из дней работ (колонка «День»)
   works: worksSchema,
 });
 

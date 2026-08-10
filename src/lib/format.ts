@@ -120,10 +120,12 @@ export function wagonSchedule(
 }
 
 // ─── Разбивка работ позиции по рабочим дням ───
-// Рабочий день = 8 часов (08:00–17:00). Работы идут ПОСЛЕДОВАТЕЛЬНО: копим
-// часы, каждые 8 ч закрывают день и получают свою дату (сб/вс пропускаются).
-// Если работа не помещается в остаток дня — её «хвост» переносится на
-// следующий день (строгие 8 ч в дне). Пример: 3 ч + 5 ч = 8 ч = один день.
+// Как в бумаге: у каждой работы своя колонка «Kun/День» (dayFrom…dayTo).
+// Работы разных цехов идут ПАРАЛЛЕЛЬНО, поэтому в одном дне часов может быть
+// больше 8 — это часы разных бригад. Работа на два дня делит часы поровну.
+//
+// Если дни не проставлены (старые данные) — работает прежняя раскладка:
+// работы подряд, каждые 8 ч закрывают день (см. splitWorksSequentially).
 
 export interface WorkDayPortion<T> {
   work: T;
@@ -134,11 +136,54 @@ export interface WorkDayPortion<T> {
 export interface WorkDay<T> {
   index: number; // номер дня внутри позиции, с 1
   date: Date;
-  hours: number; // часов за день (обычно 8, последний — остаток)
+  hours: number; // часов за день (сумма по всем бригадам)
   portions: WorkDayPortion<T>[];
 }
 
-export function splitWorksIntoDays<T extends { hours: number }>(
+type DayFields = { dayFrom?: number | null; dayTo?: number | null };
+
+export function splitWorksIntoDays<T extends { hours: number } & DayFields>(
+  works: T[],
+  start: string | Date
+): WorkDay<T>[] {
+  const withDays = works.some(
+    (w) => (w.dayFrom ?? null) !== null || (w.dayTo ?? null) !== null
+  );
+  if (!withDays) return splitWorksSequentially(works, start);
+
+  // сколько всего дней у позиции — по последнему дню её работ
+  const total = works.reduce((m, w) => Math.max(m, w.dayTo ?? w.dayFrom ?? 1), 1);
+
+  const days: WorkDay<T>[] = [];
+  for (let i = 1; i <= total; i++) {
+    const date = days.length
+      ? nextWorkday(days[days.length - 1].date)
+      : firstWorkday(start);
+    days.push({ index: i, date, hours: 0, portions: [] });
+  }
+
+  for (const w of works) {
+    const from = Math.min(Math.max(w.dayFrom ?? w.dayTo ?? 1, 1), total);
+    const to = Math.min(Math.max(w.dayTo ?? from, from), total);
+    const span = to - from + 1;
+    const perDay = (w.hours || 0) / span;
+    for (let d = from; d <= to; d++) {
+      const day = days[d - 1];
+      day.portions.push({
+        work: w,
+        hours: perDay,
+        total: w.hours,
+        partial: span > 1,
+      });
+      day.hours += perDay;
+    }
+  }
+  return days;
+}
+
+// Прежняя модель: работы идут подряд, строгие 8 ч в дне, «хвост» работы
+// переносится на следующий день. Осталась для данных без колонки «День».
+function splitWorksSequentially<T extends { hours: number }>(
   works: T[],
   start: string | Date
 ): WorkDay<T>[] {

@@ -13,7 +13,7 @@ const updateSchema = z.object({
   nameUz: z.string().min(1).optional(),
   nameRu: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
-  // прислали работы — заменяем их целиком, срок пересчитываем из их часов
+  // прислали работы — заменяем их целиком, срок пересчитываем из их дней
   works: worksSchema.optional(),
 });
 
@@ -42,7 +42,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     // Работы всегда перезаписываем целиком: так проще, чем сверять построчно,
     // и номера остаются подряд, без дыр после удалений. Срок позиции —
-    // сумма часов работ, поэтому пересчитываем его здесь же.
+    // её последний день (колонка «День»), поэтому пересчитываем его здесь же.
     const rows = numberWorks(works);
     const [, , stage] = await prisma.$transaction([
       prisma.stageWork.deleteMany({ where: { stageId: params.id } }),

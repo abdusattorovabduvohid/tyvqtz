@@ -44,6 +44,8 @@ interface Work {
   hours: number;
   seh: string | null;
   workerCount: number | null;
+  dayFrom: number | null;
+  dayTo: number | null;
 }
 interface Stage {
   id: string;
@@ -63,10 +65,20 @@ type WorkRow = {
   hours: number | "";
   seh: string;
   workerCount: number | "";
+  dayFrom: number | "";
+  dayTo: number | "";
 };
 
 const MotionTr = motion.create("tr");
-const emptyRow = (): WorkRow => ({ nameUz: "", nameRu: "", hours: "", seh: "", workerCount: "" });
+const emptyRow = (): WorkRow => ({
+  nameUz: "",
+  nameRu: "",
+  hours: "",
+  seh: "",
+  workerCount: "",
+  dayFrom: 1,
+  dayTo: 1,
+});
 // секунды позиции → рабочие дни (8 ч = 1 день), как в stageWorkdays: округляем ВВЕРХ
 const durToDays = (sec: number) => Math.max(1, Math.ceil(sec / 3600 / 8));
 // уникальные цехи позиции (из её работ), для колонки списка
@@ -87,9 +99,14 @@ export default function StagesPage() {
   const [nameUz, setNameUz] = useState("");
   const [works, setWorks] = useState<WorkRow[]>([emptyRow()]);
 
-  // срок позиции больше не вводят руками — он равен сумме часов работ (8 ч = 1 день)
+  // Срок позиции не вводят руками: как в бумаге, он равен последнему дню её
+  // работ (колонка «День»). Часы показываем справочно — они у бригад
+  // параллельные, поэтому в сумме дают больше, чем дней × 8.
   const editHours = works.reduce((a, w) => a + (Number(w.hours) || 0), 0);
-  const editDays = Math.max(1, Math.ceil(editHours / 8));
+  const editDays = works.reduce(
+    (m, w) => Math.max(m, Number(w.dayTo) || Number(w.dayFrom) || 1),
+    1
+  );
 
   async function load() {
     setLoading(true);
@@ -128,6 +145,8 @@ export default function StagesPage() {
             hours: w.hours,
             seh: w.seh ?? "",
             workerCount: w.workerCount ?? "",
+            dayFrom: w.dayFrom ?? 1,
+            dayTo: w.dayTo ?? w.dayFrom ?? 1,
           }))
         : [emptyRow()]
     );
@@ -167,13 +186,19 @@ export default function StagesPage() {
         number: Number(number),
         nameUz: nameUz.trim(),
         nameRu: nameRu.trim() || null,
-        works: clean.map((w) => ({
-          nameUz: w.nameUz.trim(),
-          nameRu: w.nameRu.trim() || null,
-          hours: Number(w.hours),
-          seh: w.seh.trim() || null,
-          workerCount: w.workerCount === "" ? null : Number(w.workerCount),
-        })),
+        works: clean.map((w) => {
+          const from = Number(w.dayFrom) || 1;
+          const to = Math.max(from, Number(w.dayTo) || from);
+          return {
+            nameUz: w.nameUz.trim(),
+            nameRu: w.nameRu.trim() || null,
+            hours: Number(w.hours),
+            seh: w.seh.trim() || null,
+            workerCount: w.workerCount === "" ? null : Number(w.workerCount),
+            dayFrom: from,
+            dayTo: to,
+          };
+        }),
       };
       if (editing) {
         await apiFetch(`/api/stages/${editing.id}`, {
@@ -439,6 +464,34 @@ export default function StagesPage() {
                       placeholder="2"
                       value={w.seh}
                       onChange={(e) => setWork(i, { seh: e.currentTarget.value })}
+                    />
+                  </Group>
+                  {/* Колонка «День» из бумаги: с какого по какой день позиции
+                      идёт работа. Одна работа за день → оба поля одинаковые. */}
+                  <Group grow wrap="wrap">
+                    <NumberInput
+                      label={t("stages.dayFrom")}
+                      min={1}
+                      max={31}
+                      value={w.dayFrom}
+                      onChange={(v) =>
+                        setWork(i, {
+                          dayFrom: typeof v === "number" ? v : "",
+                          // «по» тянется за «с», если было равно ему или пусто
+                          dayTo:
+                            typeof v === "number" &&
+                            (w.dayTo === "" || Number(w.dayTo) < v)
+                              ? v
+                              : w.dayTo,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      label={t("stages.dayTo")}
+                      min={Number(w.dayFrom) || 1}
+                      max={31}
+                      value={w.dayTo}
+                      onChange={(v) => setWork(i, { dayTo: typeof v === "number" ? v : "" })}
                     />
                   </Group>
                 </Stack>

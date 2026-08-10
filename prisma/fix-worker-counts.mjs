@@ -1,17 +1,23 @@
-// Восстанавливает «число рабочих» и «цех» у работ — и в шаблонах позиций,
-// и в снимках работ уже созданных вагонов. Сопоставление идёт по русскому
-// названию работы: оно уникально внутри позиции.
+// Восстанавливает «число рабочих», «цех» и дни («День» из бумаги) у работ —
+// и в шаблонах позиций, и в снимках работ уже созданных вагонов. Сопоставление
+// идёт по русскому названию работы: оно уникально внутри позиции.
+// Длительности позиций после этого пересчитывает resync-wagons.mjs.
 
 import { PrismaClient } from "@prisma/client";
 import { POSITIONS } from "./import-official-10.mjs";
 
 const prisma = new PrismaClient();
 
-/** «название работы» → { workerCount, seh } из официального плана */
+/** «название работы» → { workerCount, seh, dayFrom, dayTo } из официального плана */
 const byName = new Map();
 for (const p of POSITIONS) {
   for (const w of p.works) {
-    byName.set(w.nameRu.trim(), { workerCount: w.workerCount, seh: w.seh });
+    byName.set(w.nameRu.trim(), {
+      workerCount: w.workerCount,
+      seh: w.seh,
+      dayFrom: w.dayFrom,
+      dayTo: w.dayTo,
+    });
   }
 }
 
@@ -20,7 +26,13 @@ async function main() {
   for (const w of await prisma.stageWork.findMany()) {
     const src = byName.get(w.nameRu?.trim() ?? "");
     if (!src) continue;
-    if (w.workerCount === src.workerCount && w.seh === src.seh) continue;
+    if (
+      w.workerCount === src.workerCount &&
+      w.seh === src.seh &&
+      w.dayFrom === src.dayFrom &&
+      w.dayTo === src.dayTo
+    )
+      continue;
     await prisma.stageWork.update({ where: { id: w.id }, data: src });
     tpl++;
   }
@@ -29,7 +41,13 @@ async function main() {
   for (const w of await prisma.wagonStageWork.findMany()) {
     const src = byName.get(w.nameRu?.trim() ?? "");
     if (!src) continue;
-    if (w.workerCount === src.workerCount && w.seh === src.seh) continue;
+    if (
+      w.workerCount === src.workerCount &&
+      w.seh === src.seh &&
+      w.dayFrom === src.dayFrom &&
+      w.dayTo === src.dayTo
+    )
+      continue;
     await prisma.wagonStageWork.update({ where: { id: w.id }, data: src });
     snap++;
   }
