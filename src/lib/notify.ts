@@ -9,6 +9,7 @@
 
 import webpush from "web-push";
 import { prisma } from "./db";
+import { NOTIFICATIONS_ENABLED } from "./features";
 
 export interface NotifyPayload {
   title: string;
@@ -58,11 +59,12 @@ function initVapid(): boolean {
 }
 
 export function pushEnabled(): boolean {
+  if (!NOTIFICATIONS_ENABLED) return false;
   return initVapid();
 }
 
 async function sendWebPush(userIds: string[], payload: NotifyPayload) {
-  if (!initVapid() || userIds.length === 0) return;
+  if (!pushEnabled() || userIds.length === 0) return;
 
   const subs = await prisma.pushSubscription.findMany({
     where: { userId: { in: userIds } },
@@ -139,6 +141,7 @@ async function sendWebPush(userIds: string[], payload: NotifyPayload) {
 // ─────────────────────────── Telegram ───────────────────────────
 
 export function telegramEnabled(): boolean {
+  if (!NOTIFICATIONS_ENABLED) return false;
   return Boolean(process.env.TELEGRAM_BOT_TOKEN);
 }
 
@@ -223,6 +226,7 @@ export async function notifyUsers(
   userIds: (string | null | undefined)[],
   payload: NotifyPayload
 ): Promise<void> {
+  if (!NOTIFICATIONS_ENABLED) return; // раздел выключен в features.ts
   try {
     const ids = Array.from(
       new Set(userIds.filter((x): x is string => Boolean(x)))

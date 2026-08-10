@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireUser, handleError } from "@/lib/api";
 import { notifyUsers } from "@/lib/notify";
+import { notificationsOff } from "@/lib/feature-guard";
 
 // «Проверить» на странице уведомлений: шлём пуш и телеграм самому себе.
 // Так сотрудник сразу видит, дошло или нет, и не гадает.
 export async function POST() {
+  const off = notificationsOff();
+  if (off) return off;
+
   try {
     const user = await requireUser();
     await notifyUsers([user.id], {

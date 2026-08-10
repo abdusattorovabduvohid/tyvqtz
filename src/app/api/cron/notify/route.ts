@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { wagonSchedule } from "@/lib/format";
 import { notifyUsers, notifyUsersAndGroup } from "@/lib/notify";
+import { notificationsOff } from "@/lib/feature-guard";
 
 // Ежедневные напоминания по плану. Запускается кроном раз в сутки утром
 // (см. vercel.json). Смотрит план дат каждого вагона и шлёт:
@@ -140,6 +141,9 @@ async function run() {
 }
 
 export async function GET(req: Request) {
+  const off = notificationsOff();
+  if (off) return off;
+
   if (!authorized(req)) {
     return NextResponse.json({ error: "Недостаточно прав" }, { status: 401 });
   }

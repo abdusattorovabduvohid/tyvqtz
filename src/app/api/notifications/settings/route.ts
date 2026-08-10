@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser, handleError } from "@/lib/api";
 import { pushEnabled, telegramEnabled } from "@/lib/notify";
+import { notificationsOff } from "@/lib/feature-guard";
 
 // Состояние уведомлений текущего сотрудника — для страницы настроек.
 // Публичный VAPID-ключ отдаём отсюда, а не через NEXT_PUBLIC_*: ключ можно
 // поменять в проде без пересборки фронта.
 export async function GET() {
+  const off = notificationsOff();
+  if (off) return off;
+
   try {
     const user = await requireUser();
 

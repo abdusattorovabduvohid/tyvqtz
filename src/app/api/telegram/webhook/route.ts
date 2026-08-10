@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { telegramSend } from "@/lib/notify";
+import { NOTIFICATIONS_ENABLED } from "@/lib/features";
 
 // Вебхук телеграм-бота. Телеграм сам стучится сюда на каждое сообщение.
 //
@@ -13,6 +14,9 @@ import { telegramSend } from "@/lib/notify";
 //   /stop        — отвязать
 
 export async function POST(req: Request) {
+  // раздел выключен: молча проглатываем апдейты, иначе телеграм копит ошибки
+  if (!NOTIFICATIONS_ENABLED) return NextResponse.json({ ok: true });
+
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ ok: true });
   if (req.headers.get("x-telegram-bot-api-secret-token") !== secret) {

@@ -3,11 +3,15 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { requireUser, handleError, ApiError } from "@/lib/api";
 import { telegramEnabled } from "@/lib/notify";
+import { notificationsOff } from "@/lib/feature-guard";
 
 // Подключение телеграма одноразовым кодом:
 // сайт даёт код → человек открывает t.me/<bot>?start=<код> → бот в вебхуке
 // находит сотрудника по коду и запоминает его chat id.
 export async function POST() {
+  const off = notificationsOff();
+  if (off) return off;
+
   try {
     const user = await requireUser();
     if (!telegramEnabled()) {
@@ -32,6 +36,9 @@ export async function POST() {
 
 // Отключить телеграм у себя.
 export async function DELETE() {
+  const off = notificationsOff();
+  if (off) return off;
+
   try {
     const user = await requireUser();
     await prisma.user.update({

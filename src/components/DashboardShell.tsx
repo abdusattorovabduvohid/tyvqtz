@@ -32,6 +32,7 @@ import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/client";
 import { UserProvider, type ClientUser } from "./UserContext";
 import { PushAutoHeal } from "./PushAutoHeal";
+import { NOTIFICATIONS_ENABLED } from "@/lib/features";
 import { useI18n } from "./I18nProvider";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Logo } from "./Logo";
@@ -76,12 +77,15 @@ export function DashboardShell({
     return t(`sections.${key}`);
   };
 
-  // Уведомления — личная настройка, права на неё не нужны: пункт есть у всех
+  // Уведомления — личная настройка, права на неё не нужны: пункт есть у всех.
+  // Раздел целиком выключается флагом в lib/features.ts.
   const items: NavItem[] = [
     { key: "dashboard", label: "", href: "/dashboard" },
     { key: "my-stages", label: "", href: "/dashboard/my-stages" },
     ...nav,
-    { key: "notifications", label: "", href: "/dashboard/notifications" },
+    ...(NOTIFICATIONS_ENABLED
+      ? [{ key: "notifications", label: "", href: "/dashboard/notifications" }]
+      : []),
   ];
 
   async function logout() {
@@ -167,13 +171,15 @@ export function DashboardShell({
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Label>{fullName}</Menu.Label>
-                <Menu.Item
-                  component={Link}
-                  href="/dashboard/notifications"
-                  leftSection={<IconBell size={16} />}
-                >
-                  {t("notif.title")}
-                </Menu.Item>
+                {NOTIFICATIONS_ENABLED && (
+                  <Menu.Item
+                    component={Link}
+                    href="/dashboard/notifications"
+                    leftSection={<IconBell size={16} />}
+                  >
+                    {t("notif.title")}
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   color="red"
                   leftSection={<IconLogout size={16} />}

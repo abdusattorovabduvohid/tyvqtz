@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser, handleError } from "@/lib/api";
+import { notificationsOff } from "@/lib/feature-guard";
 
 // Подписка браузера на пуши. Одно устройство = одна запись (ключ — endpoint).
 // Если то же устройство раньше было у другого сотрудника (общий планшет
@@ -16,6 +17,9 @@ const subSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const off = notificationsOff();
+  if (off) return off;
+
   try {
     const user = await requireUser();
     const data = subSchema.parse(await req.json());
@@ -50,6 +54,9 @@ export async function POST(req: Request) {
 
 // Отписка: человек выключил уведомления на этом устройстве.
 export async function DELETE(req: Request) {
+  const off = notificationsOff();
+  if (off) return off;
+
   try {
     const user = await requireUser();
     const { endpoint } = z
