@@ -27,7 +27,7 @@ import {
   IconCheck,
   IconSend,
 } from "@tabler/icons-react";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
 import { useI18n } from "@/components/I18nProvider";
 import {
@@ -98,8 +98,8 @@ export default function NotificationsPage() {
       setSubscribed(
         Boolean(sub && r.push.devices.some((d) => d.endpoint === sub.endpoint))
       );
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
@@ -144,8 +144,8 @@ export default function NotificationsPage() {
         notifications.show({ color: "gray", message: t("notif.pushOffDone") });
       }
       await load();
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setBusy(null);
     }
@@ -161,8 +161,8 @@ export default function NotificationsPage() {
       setTgCode(r.code);
       setTgLink(r.link);
       if (r.link) window.open(r.link, "_blank");
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setBusy(null);
     }
@@ -176,8 +176,8 @@ export default function NotificationsPage() {
       setTgLink(null);
       notifications.show({ color: "gray", message: t("notif.tgUnlinked") });
       await load();
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setBusy(null);
     }
@@ -188,8 +188,8 @@ export default function NotificationsPage() {
     try {
       await apiFetch("/api/push/test", { method: "POST" });
       notifications.show({ color: "teal", message: t("notif.testSent") });
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setBusy(null);
     }

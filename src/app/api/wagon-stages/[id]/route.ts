@@ -2,25 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser, handleError, ApiError } from "@/lib/api";
+import { stageActionSchema } from "@/lib/api-schemas";
 import { can } from "@/lib/permissions";
 import { computeApproval } from "@/lib/wagon";
 import { stageWorkdays } from "@/lib/format";
 import { notifyUsers, notifyUsersAndGroup, personName } from "@/lib/notify";
-
-const schema = z.object({
-  action: z.enum([
-    "approve",
-    "deny",
-    "start",
-    "finish",
-    "signoff", // приёмка одного рабочего дня позиции
-  ]),
-  comment: z.string().optional(),
-  // для signoff: какой день принимаем и решение
-  dayIndex: z.number().int().min(1).optional(),
-  // accepted — принять, rejected — не принять (нужен comment), none — снять подпись
-  decision: z.enum(["accepted", "rejected", "none"]).optional(),
-});
 
 type Params = { params: { id: string } };
 
@@ -158,7 +144,7 @@ async function notifyAfterSignoff(
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireUser();
-    const { action, comment, dayIndex, decision } = schema.parse(
+    const { action, comment, dayIndex, decision } = stageActionSchema.parse(
       await req.json()
     );
 

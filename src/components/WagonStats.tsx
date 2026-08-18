@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Text, Box, Tooltip, Group } from "@mantine/core";
-import { motion, animate, useReducedMotion } from "framer-motion";
 import { useI18n } from "./I18nProvider";
+import { revealDelay } from "@/lib/anim";
 
 export interface WagonStatCounts {
   done: number;
@@ -21,23 +21,33 @@ const ITEMS = [
   { key: "blocked", hex: "#dc2626" },
 ] as const;
 
+const COUNT_UP_MS = 700;
+
 // Число «набегает» от нуля — оживляет строку при загрузке страницы.
+// Считаем сами, кадр за кадром: ради одного этого эффекта тянуть в бандл
+// анимационную библиотеку не стоит.
+//
+// Начальное состояние — сразу итог: в серверной разметке стоит настоящее
+// число, и до гидратации панель показывает правду, а не ноль.
 function CountUp({ value, color }: { value: number; color: string }) {
-  const reduce = useReducedMotion();
-  const [n, setN] = useState(reduce ? value : 0);
+  const [n, setN] = useState(value);
 
   useEffect(() => {
-    if (reduce) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setN(value);
       return;
     }
-    const controls = animate(0, value, {
-      duration: 0.7,
-      ease: "easeOut",
-      onUpdate: (v) => setN(Math.round(v)),
-    });
-    return () => controls.stop();
-  }, [value, reduce]);
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / COUNT_UP_MS);
+      // easeOutCubic — резкий старт, мягкая остановка
+      setN(Math.round(value * (1 - (1 - p) ** 3)));
+      if (p < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
 
   return (
     <Text fw={800} size="26px" c={color} lh={1}>
@@ -55,32 +65,27 @@ export function WagonStats({ counts }: { counts: WagonStatCounts }) {
       {/* wrap — на узком экране счётчики переносятся, а не режутся */}
       <Group gap={0} align="center">
         {ITEMS.map((item, i) => (
-          <motion.div
+          <Box
             key={item.key}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06, duration: 0.3 }}
-            whileHover={{ y: -2 }}
-            style={{ flex: "none" }}
+            component={Link}
+            href={`/dashboard/wagons?status=${item.key}`}
+            className="reveal-up lift-sm"
+            px="lg"
+            style={{
+              display: "flex",
+              flex: "none",
+              alignItems: "baseline",
+              gap: 8,
+              textDecoration: "none",
+              animationDelay: revealDelay(i),
+              borderRight: i < ITEMS.length - 1 ? "1px solid var(--mantine-color-gray-2)" : undefined,
+            }}
           >
-            <Box
-              component={Link}
-              href={`/dashboard/wagons?status=${item.key}`}
-              px="lg"
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 8,
-                textDecoration: "none",
-                borderRight: i < ITEMS.length - 1 ? "1px solid var(--mantine-color-gray-2)" : undefined,
-              }}
-            >
-              <CountUp value={counts[item.key]} color={item.hex} />
-              <Text size="sm" c="dimmed">
-                {t(`home.ws.${item.key}`)}
-              </Text>
-            </Box>
-          </motion.div>
+            <CountUp value={counts[item.key]} color={item.hex} />
+            <Text size="sm" c="dimmed">
+              {t(`home.ws.${item.key}`)}
+            </Text>
+          </Box>
         ))}
 
         {/* Полоса распределения — занимает остаток строки */}
@@ -108,11 +113,13 @@ export function WagonStats({ counts }: { counts: WagonStatCounts }) {
                   label={`${t(`home.ws.${item.key}`)}: ${value}`}
                   withArrow
                 >
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(value / total) * 100}%` }}
-                    transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }}
-                    style={{ background: item.hex, height: "100%" }}
+                  <div
+                    className="grow-x"
+                    style={{
+                      background: item.hex,
+                      height: "100%",
+                      width: `${(value / total) * 100}%`,
+                    }}
                   />
                 </Tooltip>
               );

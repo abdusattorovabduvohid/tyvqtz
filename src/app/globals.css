@@ -67,7 +67,7 @@ summary {
   touch-action: manipulation;
 }
 
-/* плавная прокрутка и аккуратный скроллбар */
+/* аккуратный скроллбар */
 * {
   scrollbar-width: thin;
 }
@@ -78,4 +78,130 @@ summary {
 *::-webkit-scrollbar-thumb {
   background: var(--mantine-color-gray-4);
   border-radius: 8px;
+}
+
+/* ── Анимации ─────────────────────────────────────────────────────────────
+   Раньше их считала framer-motion: ~50 КБ JS в каждой странице плюс расчёт
+   каждого кадра в главном потоке. На рабочих телефонах это и был основной
+   тормоз — список вагонов «доезжал» секундами. Теперь то же самое на CSS:
+   анимации opacity/transform браузер крутит в композиторе, главный поток
+   свободен, а из бандла ушла целая библиотека.
+
+   Правила: анимируем только opacity и transform (они не вызывают перерасчёт
+   вёрстки), fill-mode — backwards (не forwards!), иначе после анимации
+   зафиксируется transform и перестанет работать :hover. */
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+}
+@keyframes reveal-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-10px, 0, 0);
+  }
+}
+@keyframes reveal-right {
+  from {
+    opacity: 0;
+    transform: translate3d(10px, 0, 0);
+  }
+}
+@keyframes reveal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.reveal-up,
+.reveal-left,
+.reveal-right,
+.reveal-fade {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: backwards;
+}
+.reveal-up {
+  animation-name: reveal-up;
+}
+.reveal-left {
+  animation-name: reveal-left;
+}
+.reveal-right {
+  animation-name: reveal-right;
+}
+.reveal-fade {
+  animation-name: reveal-fade;
+}
+
+/* Полоса прогресса. Ширину задаём сразу, а «набегание» рисуем через scaleX:
+   анимация width пересчитывает вёрстку на каждом кадре, scaleX — нет. */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+.grow-x {
+  transform-origin: left center;
+  animation: grow-x 600ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Живой индикатор таймера. */
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes pulse-dot-alarm {
+  50% {
+    transform: scale(1.25);
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+.pulse-dot--alarm {
+  animation: pulse-dot-alarm 0.9s ease-in-out infinite;
+}
+
+/* Подъём карточки под курсором — только там, где курсор реально есть.
+   На телефоне у :hover нет смысла, а framer вешала обработчики всегда. */
+.lift,
+.lift-sm,
+.nudge-x {
+  transition: transform 160ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lift:hover {
+    transform: translateY(-3px);
+  }
+  .lift-sm:hover {
+    transform: translateY(-2px);
+  }
+  .nudge-x:hover {
+    transform: translateX(3px);
+  }
+}
+
+/* Отклик на палец: подтверждает нажатие до того, как придёт ответ сервера. */
+.tap {
+  transition: transform 120ms ease;
+}
+.tap:active {
+  transform: scale(0.985);
+}
+
+/* Системная настройка «меньше движения» — уважаем её глобально, чтобы про
+   неё не нужно было помнить в каждом компоненте. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

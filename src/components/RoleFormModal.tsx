@@ -18,8 +18,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconShieldCheck } from "@tabler/icons-react";
-import { motion } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { useI18n } from "@/components/I18nProvider";
 import {
   SECTIONS,
@@ -119,8 +118,8 @@ export function RoleFormModal({ opened, onClose, onSaved, initial }: Props) {
       }
       onSaved();
       onClose();
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setSaving(false);
     }
@@ -174,10 +173,7 @@ export function RoleFormModal({ opened, onClose, onSaved, initial }: Props) {
           </Card>
 
           {!isSuper && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-            >
+            <div className="reveal-fade">
               <Text fw={600} size="sm" mb="xs">
                 {t("roles.matrixTitle")}
               </Text>
@@ -250,7 +246,7 @@ export function RoleFormModal({ opened, onClose, onSaved, initial }: Props) {
               <Alert mt="sm" color="gray" variant="light" p="xs">
                 <Text size="xs">{t("roles.viewNote")}</Text>
               </Alert>
-            </motion.div>
+            </div>
           )}
 
           <Group justify="flex-end" mt="sm">

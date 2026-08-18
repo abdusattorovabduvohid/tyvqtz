@@ -1,7 +1,9 @@
 # Админ Панель
 
 Full-stack админка на **Next.js 14 (App Router)** + **Mantine UI** + **Prisma/SQLite**.
-Анимации — **Framer Motion**. Авторизация — JWT в httpOnly-cookie. Права — RBAC (секции × действия).
+Анимации — на CSS (`src/app/globals.css`), без анимационных библиотек: телефоны
+на заводе слабые, и каждый килобайт JS там виден. Авторизация — JWT
+в httpOnly-cookie. Права — RBAC (секции × действия).
 
 ## Запуск
 

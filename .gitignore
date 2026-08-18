@@ -15,5 +15,4 @@ prisma/backup-*.json
 /public/uploads/*
 !/public/uploads/.gitkeep
 next-env.d.ts
-.next-verify
 tsconfig.tsbuildinfo

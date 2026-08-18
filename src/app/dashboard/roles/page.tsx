@@ -24,8 +24,8 @@ import {
   IconShieldHalf,
   IconCrown,
 } from "@tabler/icons-react";
-import { motion } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
+import { revealDelay } from "@/lib/anim";
 import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
@@ -46,8 +46,8 @@ export default function RolesPage() {
     try {
       const r = await apiFetch<{ roles: RoleRow[] }>("/api/roles");
       setRoles(r.roles);
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
@@ -79,8 +79,8 @@ export default function RolesPage() {
           await apiFetch(`/api/roles/${r.id}`, { method: "DELETE" });
           notifications.show({ color: "teal", message: t("roles.deleted") });
           load();
-        } catch (e: any) {
-          notifications.show({ color: "red", message: e.message });
+        } catch (e) {
+          showError(e);
         }
       },
     });
@@ -131,14 +131,13 @@ export default function RolesPage() {
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
           {roles.map((r, i) => (
-            <motion.div
+            <Card
               key={r.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              whileHover={{ y: -3 }}
+              p="lg"
+              h="100%"
+              className="reveal-up lift"
+              style={{ animationDelay: revealDelay(i) }}
             >
-            <Card p="lg" h="100%">
               <Group justify="space-between" mb="md">
                 <Group gap="sm">
                   <ThemeIcon
@@ -199,7 +198,6 @@ export default function RolesPage() {
                 sectionBadges(r)
               )}
             </Card>
-            </motion.div>
           ))}
         </SimpleGrid>
       )}

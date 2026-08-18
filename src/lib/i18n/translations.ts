@@ -16,6 +16,8 @@ const ru: Dict = {
   "common.cancel": "Отмена",
   "common.copy": "Копировать",
   "common.copied": "Скопировано",
+  "common.error": "Ошибка",
+  "common.requestFailed": "Ошибка запроса ({code})",
 
   // уведомления (личная страница сотрудника)
   "notif.title": "Уведомления",
@@ -486,6 +488,8 @@ const uz: Dict = {
   "common.cancel": "Bekor qilish",
   "common.copy": "Nusxalash",
   "common.copied": "Nusxalandi",
+  "common.error": "Xatolik",
+  "common.requestFailed": "So‘rov xatosi ({code})",
 
   // bildirishnomalar (xodimning shaxsiy sahifasi)
   "notif.title": "Bildirishnomalar",

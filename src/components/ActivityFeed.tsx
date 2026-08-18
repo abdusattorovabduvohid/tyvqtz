@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { Card, Text, Box, Center, ThemeIcon, Stack } from "@mantine/core";
 import { IconPlayerPlay, IconCheck, IconX, IconHistory } from "@tabler/icons-react";
-import { motion } from "framer-motion";
 import { useI18n } from "./I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
 import { formatDateTime } from "@/lib/format";
+import { revealDelay } from "@/lib/anim";
 import type { ActivityItem } from "@/lib/dashboard";
 
 const KIND = {
@@ -43,59 +43,55 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
           {items.map((it, i) => {
             const k = KIND[it.kind];
             return (
-              <motion.div
+              <Box
                 key={`${it.kind}-${it.wagon.id}-${it.stage.number}-${it.at}`}
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 + i * 0.07, duration: 0.3 }}
+                component={Link}
+                href={`/dashboard/wagons/${it.wagon.id}`}
+                className="reveal-right"
+                py={9}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  textDecoration: "none",
+                  animationDelay: revealDelay(i),
+                  borderBottom:
+                    i < items.length - 1 ? "1px solid var(--mantine-color-gray-1)" : undefined,
+                }}
               >
                 <Box
-                  component={Link}
-                  href={`/dashboard/wagons/${it.wagon.id}`}
-                  py={9}
                   style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 999,
+                    background: k.color,
+                    color: "#fff",
                     display: "flex",
-                    gap: 10,
                     alignItems: "center",
-                    textDecoration: "none",
-                    borderBottom:
-                      i < items.length - 1 ? "1px solid var(--mantine-color-gray-1)" : undefined,
+                    justifyContent: "center",
+                    flex: "none",
                   }}
                 >
-                  <Box
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 999,
-                      background: k.color,
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flex: "none",
-                    }}
-                  >
-                    {k.icon}
-                  </Box>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <Text size="12.5px" c="#14264f" lh={1.35}>
-                      <Text span fw={700}>
-                        {it.by}
-                      </Text>{" "}
-                      {t(`home.act.${it.kind}`, {
-                        n: it.stage.number,
-                        name: pickName(it.stage, lang),
-                      })}
-                    </Text>
-                    <Text size="11px" c="dimmed" lh={1.35}>
-                      {pickName(it.wagon, lang)} №{it.wagon.number}
-                    </Text>
-                  </div>
-                  <Text size="11px" c="dimmed" style={{ flex: "none", whiteSpace: "nowrap" }}>
-                    {formatDateTime(it.at)}
-                  </Text>
+                  {k.icon}
                 </Box>
-              </motion.div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <Text size="12.5px" c="#14264f" lh={1.35}>
+                    <Text span fw={700}>
+                      {it.by}
+                    </Text>{" "}
+                    {t(`home.act.${it.kind}`, {
+                      n: it.stage.number,
+                      name: pickName(it.stage, lang),
+                    })}
+                  </Text>
+                  <Text size="11px" c="dimmed" lh={1.35}>
+                    {pickName(it.wagon, lang)} №{it.wagon.number}
+                  </Text>
+                </div>
+                <Text size="11px" c="dimmed" style={{ flex: "none", whiteSpace: "nowrap" }}>
+                  {formatDateTime(it.at)}
+                </Text>
+              </Box>
             );
           })}
         </Stack>

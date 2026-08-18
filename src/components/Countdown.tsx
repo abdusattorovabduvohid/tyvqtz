@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Box, Group, Text, Progress } from "@mantine/core";
-import { motion } from "framer-motion";
 import { formatCountdown } from "@/lib/format";
 import { useI18n } from "./I18nProvider";
 
@@ -29,9 +28,35 @@ export function Countdown({
   const { t } = useI18n();
   const [now, setNow] = useState(() => Date.now() + clockOffset);
 
+  // Пока вкладка (или установленное приложение) в фоне, тикать незачем: это
+  // ежесекундный ререндер вхолостую и лишний расход батареи на телефоне.
+  // При возврате сразу пересчитываем время, чтобы таймер не отставал.
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now() + clockOffset), 1000);
-    return () => clearInterval(id);
+    const tick = () => setNow(Date.now() + clockOffset);
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (id === null) id = setInterval(tick, 1000);
+    };
+    const stop = () => {
+      if (id !== null) clearInterval(id);
+      id = null;
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        tick();
+        start();
+      }
+    };
+
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [clockOffset]);
 
   const remainingMs = deadline - now;
@@ -45,9 +70,8 @@ export function Countdown({
   if (variant === "compact") {
     return (
       <Group gap={8} wrap="nowrap">
-        <motion.span
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: 1.4, repeat: Infinity }}
+        <span
+          className="pulse-dot"
           style={{
             width: 8,
             height: 8,
@@ -80,13 +104,8 @@ export function Countdown({
     >
       <Group justify="space-between" align="center" mb={6} wrap="nowrap">
         <Group gap={7} wrap="nowrap">
-          <motion.span
-            animate={
-              overdue
-                ? { scale: [1, 1.25, 1] }
-                : { opacity: [1, 0.35, 1] }
-            }
-            transition={{ duration: overdue ? 0.9 : 1.6, repeat: Infinity }}
+          <span
+            className={overdue ? "pulse-dot--alarm" : "pulse-dot"}
             style={{
               width: 9,
               height: 9,
@@ -111,6 +130,9 @@ export function Countdown({
         {formatCountdown(remainingMs)}
       </Text>
 
+      {/* striped — да, animated — нет: бегущие полосы это бесконечная анимация
+          на каждом таймере страницы, композитор из-за неё не засыпает. Рисунок
+          полос статичен и не стоит ничего. */}
       <Progress
         value={elapsedPct}
         color={tone.bar}
@@ -118,7 +140,6 @@ export function Countdown({
         radius="xl"
         mt={10}
         striped={!overdue}
-        animated={!overdue}
       />
     </Box>
   );

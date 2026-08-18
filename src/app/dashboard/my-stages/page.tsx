@@ -34,72 +34,32 @@ import {
   IconChevronDown,
   IconCalendarEvent,
 } from "@tabler/icons-react";
-import { motion } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
+import type { StageAction, CreationAction } from "@/lib/api-schemas";
+import type {
+  MyCreation,
+  MyStage,
+  MyStagesResponse,
+  MyTask,
+  WagonBrief,
+} from "@/lib/api-types";
+import { revealDelay } from "@/lib/anim";
 import { Page, PageHeader } from "@/components/Page";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
 import { formatDate } from "@/lib/format";
 
-interface WagonInfo {
-  id: string;
-  nameRu: string;
-  nameUz: string | null;
-  number: string;
-  wagonType: { nameRu: string; nameUz: string | null };
-  done: number;
-  total: number;
-}
-interface TaskWork {
-  number: number;
-  nameRu: string | null;
-  nameUz: string;
-  seh: string | null;
-  workerCount: number | null;
-}
-interface Task {
-  wagon: WagonInfo;
-  stageId: string;
-  stageNumber: number;
-  stageNameRu: string;
-  stageNameUz: string | null;
-  dayIndex: number;
-  date: string;
-  works: TaskWork[];
-}
-interface MineStage {
-  stageId: string;
-  stageNumber: number;
-  stageNameRu: string;
-  stageNameUz: string | null;
-  status: "pending" | "in_progress" | "done" | "blocked";
-  locked: boolean;
-  acceptedDays: number;
-  totalDays: number;
-  wagon: WagonInfo;
-}
-interface MyCreation {
-  wagonId: string;
-  nameRu: string;
-  nameUz: string | null;
-  number: string;
-  wagonType: { nameRu: string; nameUz: string | null };
-  createdAt: string;
-  myDecision: "pending" | "approved" | "denied";
-  myTurn: boolean;
-  approval: { approved: number; total: number };
-}
 
 export default function MyStagesPage() {
   const { t, lang } = useI18n();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [mine, setMine] = useState<MineStage[]>([]);
+  const [tasks, setTasks] = useState<MyTask[]>([]);
+  const [mine, setMine] = useState<MyStage[]>([]);
   const [creations, setCreations] = useState<MyCreation[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
   // отказ в приёмке дня — причина обязательна
-  const [rejectTask, setRejectTask] = useState<Task | null>(null);
+  const [rejectTask, setRejectTask] = useState<MyTask | null>(null);
   const [rejectComment, setRejectComment] = useState("");
   const [rejectSaving, setRejectSaving] = useState(false);
 
@@ -120,16 +80,12 @@ export default function MyStagesPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const r = await apiFetch<{
-        tasks: Task[];
-        mine: MineStage[];
-        creations: MyCreation[];
-      }>("/api/my-stages");
+      const r = await apiFetch<MyStagesResponse>("/api/my-stages");
       setTasks(r.tasks ?? []);
       setMine(r.mine ?? []);
       setCreations(r.creations ?? []);
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -144,7 +100,7 @@ export default function MyStagesPage() {
     return () => clearInterval(timer);
   }, [load]);
 
-  async function patch(stageId: string, body: any, key: string, okMsg: string) {
+  async function patch(stageId: string, body: StageAction, key: string, okMsg: string) {
     setBusy(key);
     try {
       await apiFetch(`/api/wagon-stages/${stageId}`, {
@@ -154,8 +110,8 @@ export default function MyStagesPage() {
       notifications.show({ color: "teal", message: okMsg });
       await load(true);
       return true;
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
       return false;
     } finally {
       setBusy(null);
@@ -163,7 +119,7 @@ export default function MyStagesPage() {
   }
 
   // приёмка дня
-  function accept(task: Task) {
+  function accept(task: MyTask) {
     patch(
       task.stageId,
       { action: "signoff", dayIndex: task.dayIndex, decision: "accepted" },
@@ -187,7 +143,7 @@ export default function MyStagesPage() {
     }
   }
 
-  async function patchCreation(wagonId: string, body: any, key: string, okMsg: string) {
+  async function patchCreation(wagonId: string, body: CreationAction, key: string, okMsg: string) {
     setBusy(key);
     try {
       await apiFetch(`/api/wagons/${wagonId}/creation`, {
@@ -197,8 +153,8 @@ export default function MyStagesPage() {
       notifications.show({ color: "teal", message: okMsg });
       await load(true);
       return true;
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
       return false;
     } finally {
       setBusy(null);
@@ -226,7 +182,7 @@ export default function MyStagesPage() {
   const pending = mine.filter((m) => m.status !== "done" && !taskStageIds.has(m.stageId));
 
   // «в очереди» группируем по вагону
-  const groups = new Map<string, { wagon: WagonInfo; stages: MineStage[] }>();
+  const groups = new Map<string, { wagon: WagonBrief; stages: MyStage[] }>();
   for (const s of pending) {
     const g = groups.get(s.wagon.id) ?? { wagon: s.wagon, stages: [] };
     g.stages.push(s);
@@ -372,104 +328,107 @@ export default function MyStagesPage() {
               </Text>
               <Stack gap="md">
                 {tasks.map((task, i) => (
-                  <motion.div
+                  <Card
                     key={`${task.stageId}-${task.dayIndex}`}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(i * 0.05, 0.3), duration: 0.3 }}
+                    withBorder
+                    p="md"
+                    radius="md"
+                    className="reveal-up"
+                    style={{
+                      borderLeft: "4px solid var(--mantine-color-steel-6)",
+                      animationDelay: revealDelay(i),
+                    }}
                   >
-                    <Card withBorder p="md" radius="md" style={{ borderLeft: "4px solid var(--mantine-color-steel-6)" }}>
-                      {/* вагон + позиция */}
-                      <Group justify="space-between" wrap="wrap" gap="xs" mb={8}>
-                        <div style={{ minWidth: 0 }}>
-                          <Text size="12px" c="dimmed">
-                            {pickName(task.wagon, lang)} · №{task.wagon.number}
-                          </Text>
-                          <Text fw={600} c="#25324d" style={{ wordBreak: "break-word" }}>
-                            {t("wd.stage", {
-                              number: task.stageNumber,
-                              name: pickName({ nameRu: task.stageNameRu, nameUz: task.stageNameUz }, lang),
-                            })}
-                          </Text>
-                        </div>
-                        <Button
-                          component={Link}
-                          href={`/dashboard/wagons/${task.wagon.id}`}
-                          variant="subtle"
-                          size="compact-xs"
-                          rightSection={<IconExternalLink size={12} />}
-                          style={{ flex: "none" }}
-                        >
-                          {t("my.wagonLink")}
-                        </Button>
-                      </Group>
-
-                      {/* день + дата */}
-                      <Group gap={7} wrap="nowrap" mb={8}>
-                        <ThemeIcon size={22} radius="sm" variant="light" color="steel">
-                          <IconCalendarEvent size={13} />
-                        </ThemeIcon>
-                        <Text size="sm" fw={600} c="steel.8">
-                          {t("wd.day", { n: task.dayIndex })} · {formatDate(task.date)}
+                    {/* вагон + позиция */}
+                    <Group justify="space-between" wrap="wrap" gap="xs" mb={8}>
+                      <div style={{ minWidth: 0 }}>
+                        <Text size="12px" c="dimmed">
+                          {pickName(task.wagon, lang)} · №{task.wagon.number}
                         </Text>
-                      </Group>
-
-                      {/* работы этого дня (без часов) */}
-                      <Box
-                        p="xs"
-                        mb="sm"
-                        style={{ borderRadius: 8, background: "var(--mantine-color-gray-0)" }}
+                        <Text fw={600} c="#25324d" style={{ wordBreak: "break-word" }}>
+                          {t("wd.stage", {
+                            number: task.stageNumber,
+                            name: pickName({ nameRu: task.stageNameRu, nameUz: task.stageNameUz }, lang),
+                          })}
+                        </Text>
+                      </div>
+                      <Button
+                        component={Link}
+                        href={`/dashboard/wagons/${task.wagon.id}`}
+                        variant="subtle"
+                        size="compact-xs"
+                        rightSection={<IconExternalLink size={12} />}
+                        style={{ flex: "none" }}
                       >
-                        {task.works.map((w, wi) => (
-                          <Group key={wi} gap={8} wrap="nowrap" py={3} align="flex-start">
-                            <Text size="12.5px" c="gray.5" fw={600} w={14} ta="right" mt={2}>
-                              {w.number}
-                            </Text>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <Text size="13.5px" c="#3a465e" lh={1.45} style={{ wordBreak: "break-word" }}>
-                                {pickName(w, lang)}
-                              </Text>
-                              <Group gap={8} mt={3} wrap="wrap">
-                                {w.seh && (
-                                  <Text size="11.5px" c="steel.6" fw={600}>
-                                    {t("wd.sehShort", { n: w.seh })}
-                                  </Text>
-                                )}
-                                {!!w.workerCount && (
-                                  <Text size="11.5px" c="gray.6">
-                                    {t("wd.workers", { n: w.workerCount })}
-                                  </Text>
-                                )}
-                              </Group>
-                            </div>
-                          </Group>
-                        ))}
-                      </Box>
+                        {t("my.wagonLink")}
+                      </Button>
+                    </Group>
 
-                      {/* приёмка */}
-                      <Group justify="flex-end" gap="xs">
-                        <Button
-                          color="red"
-                          variant="subtle"
-                          leftSection={<IconThumbDown size={16} />}
-                          onClick={() => {
-                            setRejectTask(task);
-                            setRejectComment("");
-                          }}
-                        >
-                          {t("wd.reject")}
-                        </Button>
-                        <Button
-                          color="teal"
-                          leftSection={<IconCheck size={16} />}
-                          loading={busy === `${task.stageId}-${task.dayIndex}`}
-                          onClick={() => accept(task)}
-                        >
-                          {t("wd.sign")}
-                        </Button>
-                      </Group>
-                    </Card>
-                  </motion.div>
+                    {/* день + дата */}
+                    <Group gap={7} wrap="nowrap" mb={8}>
+                      <ThemeIcon size={22} radius="sm" variant="light" color="steel">
+                        <IconCalendarEvent size={13} />
+                      </ThemeIcon>
+                      <Text size="sm" fw={600} c="steel.8">
+                        {t("wd.day", { n: task.dayIndex })} · {formatDate(task.date)}
+                      </Text>
+                    </Group>
+
+                    {/* работы этого дня (без часов) */}
+                    <Box
+                      p="xs"
+                      mb="sm"
+                      style={{ borderRadius: 8, background: "var(--mantine-color-gray-0)" }}
+                    >
+                      {task.works.map((w, wi) => (
+                        <Group key={wi} gap={8} wrap="nowrap" py={3} align="flex-start">
+                          <Text size="12.5px" c="gray.5" fw={600} w={14} ta="right" mt={2}>
+                            {w.number}
+                          </Text>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Text size="13.5px" c="#3a465e" lh={1.45} style={{ wordBreak: "break-word" }}>
+                              {pickName(w, lang)}
+                            </Text>
+                            <Group gap={8} mt={3} wrap="wrap">
+                              {w.seh && (
+                                <Text size="11.5px" c="steel.6" fw={600}>
+                                  {t("wd.sehShort", { n: w.seh })}
+                                </Text>
+                              )}
+                              {!!w.workerCount && (
+                                <Text size="11.5px" c="gray.6">
+                                  {t("wd.workers", { n: w.workerCount })}
+                                </Text>
+                              )}
+                            </Group>
+                          </div>
+                        </Group>
+                      ))}
+                    </Box>
+
+                    {/* приёмка */}
+                    <Group justify="flex-end" gap="xs">
+                      <Button
+                        color="red"
+                        variant="subtle"
+                        leftSection={<IconThumbDown size={16} />}
+                        onClick={() => {
+                          setRejectTask(task);
+                          setRejectComment("");
+                        }}
+                      >
+                        {t("wd.reject")}
+                      </Button>
+                      <Button
+                        color="teal"
+                        leftSection={<IconCheck size={16} />}
+                        loading={busy === `${task.stageId}-${task.dayIndex}`}
+                        onClick={() => accept(task)}
+                      >
+                        {t("wd.sign")}
+                      </Button>
+                    </Group>
+                  </Card>
                 ))}
               </Stack>
             </div>

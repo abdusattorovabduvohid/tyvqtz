@@ -16,7 +16,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { useI18n } from "@/components/I18nProvider";
 
 export interface UserRow {
@@ -96,7 +96,18 @@ export function UserFormModal({
   async function handleSubmit(values: typeof form.values) {
     setSaving(true);
     try {
-      const payload: any = {
+      // login отправляем только при создании (менять его нельзя),
+      // password — только когда его действительно ввели
+      const payload: {
+        firstName: string;
+        lastName: string;
+        middleName: string | null;
+        seh: string | null;
+        photo: string | null;
+        roleId: string;
+        password?: string;
+        login?: string;
+      } = {
         firstName: values.firstName,
         lastName: values.lastName,
         middleName: values.middleName || null,
@@ -122,8 +133,8 @@ export function UserFormModal({
       }
       onSaved();
       onClose();
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setSaving(false);
     }

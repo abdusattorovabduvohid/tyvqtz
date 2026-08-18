@@ -41,8 +41,8 @@ import {
   IconCalendarDue,
   IconCalendarEvent,
 } from "@tabler/icons-react";
-import { motion } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
+import type { StageAction, CreationAction } from "@/lib/api-schemas";
 import { Page } from "@/components/Page";
 import { useUser, useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
@@ -179,8 +179,8 @@ export default function WagonDetailPage() {
         );
         clockOffset.current = r.serverNow - Date.now();
         setWagon(r.wagon);
-      } catch (e: any) {
-        notifications.show({ color: "red", message: e.message });
+      } catch (e) {
+        showError(e);
       } finally {
         if (!silent) setLoading(false);
       }
@@ -198,7 +198,7 @@ export default function WagonDetailPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  async function patch(stageId: string, body: any, key: string, okMsg: string) {
+  async function patch(stageId: string, body: StageAction, key: string, okMsg: string) {
     setBusy(key);
     try {
       await apiFetch(`/api/wagon-stages/${stageId}`, {
@@ -208,8 +208,8 @@ export default function WagonDetailPage() {
       notifications.show({ color: "teal", message: okMsg });
       await load(true);
       return true;
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
       return false;
     } finally {
       setBusy(null);
@@ -217,7 +217,7 @@ export default function WagonDetailPage() {
   }
 
   async function patchCreation(
-    body: any,
+    body: CreationAction,
     key: string,
     okMsg: string
   ): Promise<boolean> {
@@ -230,8 +230,8 @@ export default function WagonDetailPage() {
       notifications.show({ color: "teal", message: okMsg });
       await load(true);
       return true;
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
       return false;
     } finally {
       setBusy(null);
@@ -606,322 +606,320 @@ export default function WagonDetailPage() {
                   </ThemeIcon>
                 }
               >
-                <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
-                  <Card withBorder p="md" radius="md">
-                    {/* Шапка позиции */}
-                    <Group justify="space-between" wrap="wrap" gap="xs" mb={10} align="center">
-                      <Group gap="xs" style={{ minWidth: 0 }}>
-                        <Text size="lg" fw={600} c="#25324d" style={{ wordBreak: "break-word" }}>
-                          {t("wd.stage", { number: s.number, name: pickName(s, lang) })}
-                        </Text>
-                        <Badge
-                          size="sm"
-                          radius="sm"
-                          variant="light"
-                          color={s.locked ? "gray" : s.status === "blocked" ? "red" : statusColor}
-                        >
-                          {s.locked ? t("wd.lockedBadge") : t(`sstatus.${s.status}`)}
-                        </Badge>
-                      </Group>
-                      {totalDays > 0 && !s.locked && (
-                        <Text size="sm" fw={600} c={acceptedDays === totalDays ? "teal.7" : "dimmed"}>
-                          {t("wd.daysAccepted", { a: acceptedDays, t: totalDays })}
-                        </Text>
-                      )}
+                <Card withBorder p="md" radius="md" className="reveal-right">
+                  {/* Шапка позиции */}
+                  <Group justify="space-between" wrap="wrap" gap="xs" mb={10} align="center">
+                    <Group gap="xs" style={{ minWidth: 0 }}>
+                      <Text size="lg" fw={600} c="#25324d" style={{ wordBreak: "break-word" }}>
+                        {t("wd.stage", { number: s.number, name: pickName(s, lang) })}
+                      </Text>
+                      <Badge
+                        size="sm"
+                        radius="sm"
+                        variant="light"
+                        color={s.locked ? "gray" : s.status === "blocked" ? "red" : statusColor}
+                      >
+                        {s.locked ? t("wd.lockedBadge") : t(`sstatus.${s.status}`)}
+                      </Badge>
                     </Group>
+                    {totalDays > 0 && !s.locked && (
+                      <Text size="sm" fw={600} c={acceptedDays === totalDays ? "teal.7" : "dimmed"}>
+                        {t("wd.daysAccepted", { a: acceptedDays, t: totalDays })}
+                      </Text>
+                    )}
+                  </Group>
 
-                    {/* Метка: люди и общий диапазон дат — мягкими цветами, без жирного */}
-                    <Group gap={7} mb="sm" wrap="wrap">
-                      {(() => {
-                        const n =
-                          s.works.reduce((a, w) => a + (w.workerCount ?? 0), 0) ||
-                          s.workerCount ||
-                          0;
-                        return n ? (
-                          <Text size="sm" c="dimmed">
-                            {t("wd.workers", { n })}
-                          </Text>
-                        ) : null;
-                      })()}
-                      {plan && (
-                        <Group gap={4} wrap="nowrap">
-                          <IconCalendarEvent size={13} color="var(--mantine-color-gray-5)" />
-                          <Text size="sm" c="dimmed">
-                            {formatDate(plan.start)}
-                            {formatDate(plan.end) !== formatDate(plan.start)
-                              ? ` – ${formatDate(plan.end)}`
-                              : ""}
-                          </Text>
-                        </Group>
-                      )}
-                      {s.note && (
+                  {/* Метка: люди и общий диапазон дат — мягкими цветами, без жирного */}
+                  <Group gap={7} mb="sm" wrap="wrap">
+                    {(() => {
+                      const n =
+                        s.works.reduce((a, w) => a + (w.workerCount ?? 0), 0) ||
+                        s.workerCount ||
+                        0;
+                      return n ? (
                         <Text size="sm" c="dimmed">
-                          · {s.note}
+                          {t("wd.workers", { n })}
                         </Text>
-                      )}
-                    </Group>
-
-                    {s.locked && (
-                      <Alert color="gray" variant="light" icon={<IconLock size={15} />} p="xs">
-                        <Text size="xs" c="dimmed">{t("wd.lockedHint", { n: s.number - 1 })}</Text>
-                      </Alert>
+                      ) : null;
+                    })()}
+                    {plan && (
+                      <Group gap={4} wrap="nowrap">
+                        <IconCalendarEvent size={13} color="var(--mantine-color-gray-5)" />
+                        <Text size="sm" c="dimmed">
+                          {formatDate(plan.start)}
+                          {formatDate(plan.end) !== formatDate(plan.start)
+                            ? ` – ${formatDate(plan.end)}`
+                            : ""}
+                        </Text>
+                      </Group>
                     )}
-
-                    {s.assignees.length === 0 && !s.locked && (
-                      <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={15} />} p="xs">
-                        <Text size="xs">{t("wd.noAssignees")}</Text>
-                      </Alert>
+                    {s.note && (
+                      <Text size="sm" c="dimmed">
+                        · {s.note}
+                      </Text>
                     )}
+                  </Group>
 
-                    {/* Дни: слева работы, справа приёмка ответственными по очереди */}
-                    {!s.locked &&
-                      days.map((day) => {
-                        const accepted = dayAccepted(day.index);
-                        const rejected = dayRejected(day.index);
-                        const active = dayActive(day.index);
-                        const acceptedCount = s.assignees.filter((a) =>
-                          acceptedBy(day.index, a.id)
-                        ).length;
-                        const tone = rejected
-                          ? { bd: "red-2", bg: "red-0", ink: "red.7" }
-                          : accepted
-                            ? { bd: "teal-2", bg: "teal-0", ink: "teal.7" }
-                            : active
-                              ? { bd: "gray-3", bg: "gray-0", ink: "steel.7" }
-                              : { bd: "gray-2", bg: "gray-0", ink: "gray.6" };
-                        return (
-                          <Box
-                            key={day.index}
-                            mt="sm"
-                            style={{
-                              border: `1px solid var(--mantine-color-${tone.bd})`,
-                              borderRadius: 12,
-                              overflow: "hidden",
-                              opacity: active || accepted || rejected ? 1 : 0.65,
-                            }}
+                  {s.locked && (
+                    <Alert color="gray" variant="light" icon={<IconLock size={15} />} p="xs">
+                      <Text size="xs" c="dimmed">{t("wd.lockedHint", { n: s.number - 1 })}</Text>
+                    </Alert>
+                  )}
+
+                  {s.assignees.length === 0 && !s.locked && (
+                    <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={15} />} p="xs">
+                      <Text size="xs">{t("wd.noAssignees")}</Text>
+                    </Alert>
+                  )}
+
+                  {/* Дни: слева работы, справа приёмка ответственными по очереди */}
+                  {!s.locked &&
+                    days.map((day) => {
+                      const accepted = dayAccepted(day.index);
+                      const rejected = dayRejected(day.index);
+                      const active = dayActive(day.index);
+                      const acceptedCount = s.assignees.filter((a) =>
+                        acceptedBy(day.index, a.id)
+                      ).length;
+                      const tone = rejected
+                        ? { bd: "red-2", bg: "red-0", ink: "red.7" }
+                        : accepted
+                          ? { bd: "teal-2", bg: "teal-0", ink: "teal.7" }
+                          : active
+                            ? { bd: "gray-3", bg: "gray-0", ink: "steel.7" }
+                            : { bd: "gray-2", bg: "gray-0", ink: "gray.6" };
+                      return (
+                        <Box
+                          key={day.index}
+                          mt="sm"
+                          style={{
+                            border: `1px solid var(--mantine-color-${tone.bd})`,
+                            borderRadius: 12,
+                            overflow: "hidden",
+                            opacity: active || accepted || rejected ? 1 : 0.65,
+                          }}
+                        >
+                          {/* шапка дня */}
+                          <Group
+                            justify="space-between"
+                            wrap="nowrap"
+                            px="sm"
+                            py={8}
+                            style={{ background: `var(--mantine-color-${tone.bg})` }}
                           >
-                            {/* шапка дня */}
-                            <Group
-                              justify="space-between"
-                              wrap="nowrap"
-                              px="sm"
-                              py={8}
-                              style={{ background: `var(--mantine-color-${tone.bg})` }}
-                            >
-                              <Group gap={7} wrap="nowrap">
-                                <ThemeIcon
-                                  size={20}
-                                  radius="sm"
-                                  variant="light"
-                                  color={rejected ? "red" : accepted ? "teal" : "steel"}
-                                >
-                                  {accepted ? (
-                                    <IconCheck size={12} />
-                                  ) : rejected ? (
-                                    <IconX size={12} />
-                                  ) : !active ? (
-                                    <IconLock size={11} />
-                                  ) : (
-                                    <IconCalendarEvent size={12} />
-                                  )}
-                                </ThemeIcon>
-                                <Text size="sm" fw={600} c={tone.ink}>
-                                  {t("wd.day", { n: day.index })} · {formatDate(day.date)}
-                                </Text>
-                              </Group>
-                              <Text size="13px" fw={600} c={accepted ? "teal.7" : rejected ? "red.6" : "dimmed"}>
-                                {t("wd.daySignCount", { a: acceptedCount, t: assigneeCount })}
+                            <Group gap={7} wrap="nowrap">
+                              <ThemeIcon
+                                size={20}
+                                radius="sm"
+                                variant="light"
+                                color={rejected ? "red" : accepted ? "teal" : "steel"}
+                              >
+                                {accepted ? (
+                                  <IconCheck size={12} />
+                                ) : rejected ? (
+                                  <IconX size={12} />
+                                ) : !active ? (
+                                  <IconLock size={11} />
+                                ) : (
+                                  <IconCalendarEvent size={12} />
+                                )}
+                              </ThemeIcon>
+                              <Text size="sm" fw={600} c={tone.ink}>
+                                {t("wd.day", { n: day.index })} · {formatDate(day.date)}
                               </Text>
                             </Group>
+                            <Text size="13px" fw={600} c={accepted ? "teal.7" : rejected ? "red.6" : "dimmed"}>
+                              {t("wd.daySignCount", { a: acceptedCount, t: assigneeCount })}
+                            </Text>
+                          </Group>
 
-                            {/* тело дня — две колонки, на телефоне встают друг под друга */}
-                            <Group align="stretch" gap={0} wrap="wrap">
-                              {/* слева: работы дня (без часов) */}
-                              <Box p="sm" style={{ flex: "1 1 220px", minWidth: 0 }}>
-                                {day.portions.map((p, pi) => (
-                                  <Group key={pi} gap={8} wrap="nowrap" py={3} align="flex-start">
-                                    <Text size="12.5px" c="gray.5" fw={600} w={14} ta="right" mt={2}>
-                                      {p.work.number}
+                          {/* тело дня — две колонки, на телефоне встают друг под друга */}
+                          <Group align="stretch" gap={0} wrap="wrap">
+                            {/* слева: работы дня (без часов) */}
+                            <Box p="sm" style={{ flex: "1 1 220px", minWidth: 0 }}>
+                              {day.portions.map((p, pi) => (
+                                <Group key={pi} gap={8} wrap="nowrap" py={3} align="flex-start">
+                                  <Text size="12.5px" c="gray.5" fw={600} w={14} ta="right" mt={2}>
+                                    {p.work.number}
+                                  </Text>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <Text size="13.5px" c="#3a465e" lh={1.45} style={{ wordBreak: "break-word" }}>
+                                      {pickName(p.work, lang)}
                                     </Text>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <Text size="13.5px" c="#3a465e" lh={1.45} style={{ wordBreak: "break-word" }}>
-                                        {pickName(p.work, lang)}
-                                      </Text>
-                                      <Group gap={8} mt={3} wrap="wrap">
-                                        {p.work.seh && (
-                                          <Text size="11.5px" c="steel.6" fw={600}>
-                                            {t("wd.sehShort", { n: p.work.seh })}
-                                          </Text>
-                                        )}
-                                        {!!p.work.workerCount && (
-                                          <Text size="11.5px" c="gray.6">
-                                            {t("wd.workers", { n: p.work.workerCount })}
-                                          </Text>
-                                        )}
-                                      </Group>
-                                    </div>
-                                  </Group>
-                                ))}
-                              </Box>
+                                    <Group gap={8} mt={3} wrap="wrap">
+                                      {p.work.seh && (
+                                        <Text size="11.5px" c="steel.6" fw={600}>
+                                          {t("wd.sehShort", { n: p.work.seh })}
+                                        </Text>
+                                      )}
+                                      {!!p.work.workerCount && (
+                                        <Text size="11.5px" c="gray.6">
+                                          {t("wd.workers", { n: p.work.workerCount })}
+                                        </Text>
+                                      )}
+                                    </Group>
+                                  </div>
+                                </Group>
+                              ))}
+                            </Box>
 
-                              {/* справа: приёмка по очереди */}
-                              <Box
-                                p="sm"
-                                style={{
-                                  flex: "1 1 250px",
-                                  minWidth: 0,
-                                  borderLeft: "1px solid var(--mantine-color-gray-2)",
-                                  background: "var(--mantine-color-gray-0)",
-                                }}
-                              >
-                                <Text size="11px" fw={600} c="gray.6" tt="uppercase" mb={8} style={{ letterSpacing: 0.5 }}>
-                                  {t("wd.signers")}
-                                </Text>
-                                <Stack gap={8}>
-                                  {s.assignees.map((a, ai) => {
-                                    const so = soOf(day.index, a.id);
-                                    const isMe = a.id === user.id;
-                                    // моя очередь: все стоящие раньше уже приняли
-                                    const myTurn = s.assignees
-                                      .slice(0, ai)
-                                      .every((x) => acceptedBy(day.index, x.id));
-                                    const canActNow = canSign && isMe && active && myTurn;
-                                    const busyKey = busy === `${s.id}-${day.index}`;
-                                    return (
-                                      <Group key={a.id} justify="space-between" wrap="nowrap" gap="xs">
-                                        <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                                          <Text size="11.5px" c="gray.5" fw={600} w={12} ta="right">
-                                            {ai + 1}
-                                          </Text>
-                                          <Avatar src={a.photo || undefined} radius="xl" size={30} color="steel">
-                                            {a.firstName?.[0]}
-                                            {a.lastName?.[0]}
-                                          </Avatar>
-                                          <div style={{ minWidth: 0 }}>
-                                            <Group gap={5} wrap="nowrap">
-                                              <Text size="13.5px" fw={600} c="#334063" truncate>
-                                                {pickName(a.role, lang)}
-                                              </Text>
-                                              {a.seh && (
-                                                <Text size="11.5px" c="steel.6" fw={600} style={{ flex: "none" }}>
-                                                  {t("wd.sehShort", { n: a.seh })}
-                                                </Text>
-                                              )}
-                                            </Group>
-                                            <Text size="12px" c="gray.6" truncate>
-                                              {fio(a)}
-                                              {isMe ? ` · ${t("wd.you")}` : ""}
+                            {/* справа: приёмка по очереди */}
+                            <Box
+                              p="sm"
+                              style={{
+                                flex: "1 1 250px",
+                                minWidth: 0,
+                                borderLeft: "1px solid var(--mantine-color-gray-2)",
+                                background: "var(--mantine-color-gray-0)",
+                              }}
+                            >
+                              <Text size="11px" fw={600} c="gray.6" tt="uppercase" mb={8} style={{ letterSpacing: 0.5 }}>
+                                {t("wd.signers")}
+                              </Text>
+                              <Stack gap={8}>
+                                {s.assignees.map((a, ai) => {
+                                  const so = soOf(day.index, a.id);
+                                  const isMe = a.id === user.id;
+                                  // моя очередь: все стоящие раньше уже приняли
+                                  const myTurn = s.assignees
+                                    .slice(0, ai)
+                                    .every((x) => acceptedBy(day.index, x.id));
+                                  const canActNow = canSign && isMe && active && myTurn;
+                                  const busyKey = busy === `${s.id}-${day.index}`;
+                                  return (
+                                    <Group key={a.id} justify="space-between" wrap="nowrap" gap="xs">
+                                      <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                                        <Text size="11.5px" c="gray.5" fw={600} w={12} ta="right">
+                                          {ai + 1}
+                                        </Text>
+                                        <Avatar src={a.photo || undefined} radius="xl" size={30} color="steel">
+                                          {a.firstName?.[0]}
+                                          {a.lastName?.[0]}
+                                        </Avatar>
+                                        <div style={{ minWidth: 0 }}>
+                                          <Group gap={5} wrap="nowrap">
+                                            <Text size="13.5px" fw={600} c="#334063" truncate>
+                                              {pickName(a.role, lang)}
                                             </Text>
-                                            {so?.decision === "accepted" && (
-                                              <Text size="11px" c="teal.6">
-                                                {formatDateTime(so.signedAt)}
+                                            {a.seh && (
+                                              <Text size="11.5px" c="steel.6" fw={600} style={{ flex: "none" }}>
+                                                {t("wd.sehShort", { n: a.seh })}
                                               </Text>
                                             )}
-                                            {so?.decision === "rejected" && so.comment && (
-                                              <Text size="11.5px" c="red.6" lh={1.35} style={{ wordBreak: "break-word" }}>
-                                                «{so.comment}»
-                                              </Text>
-                                            )}
-                                          </div>
-                                        </Group>
-
-                                        {/* состояние / действия */}
-                                        {so?.decision === "accepted" ? (
-                                          canActNow ? (
-                                            <Tooltip label={t("wd.unsign")} withArrow>
-                                              <ActionIcon
-                                                color="teal"
-                                                variant="filled"
-                                                radius="xl"
-                                                size={26}
-                                                loading={busyKey}
-                                                onClick={() => signOff(s.id, day.index, "none")}
-                                              >
-                                                <IconCheck size={15} />
-                                              </ActionIcon>
-                                            </Tooltip>
-                                          ) : (
-                                            <ThemeIcon color="teal" variant="filled" radius="xl" size={26}>
-                                              <IconCheck size={15} />
-                                            </ThemeIcon>
-                                          )
-                                        ) : so?.decision === "rejected" ? (
-                                          canActNow ? (
-                                            <Button
-                                              size="compact-sm"
-                                              variant="light"
-                                              color="teal"
-                                              loading={busyKey}
-                                              style={{ flex: "none" }}
-                                              onClick={() => signOff(s.id, day.index, "accepted")}
-                                            >
-                                              {t("wd.sign")}
-                                            </Button>
-                                          ) : (
-                                            <ThemeIcon color="red" variant="light" radius="xl" size={26}>
-                                              <IconX size={14} />
-                                            </ThemeIcon>
-                                          )
-                                        ) : canActNow ? (
-                                          <Group gap={5} wrap="nowrap" style={{ flex: "none" }}>
-                                            <Button
-                                              size="compact-sm"
-                                              variant="light"
-                                              color="teal"
-                                              loading={busyKey}
-                                              onClick={() => signOff(s.id, day.index, "accepted")}
-                                            >
-                                              {t("wd.sign")}
-                                            </Button>
-                                            <Button
-                                              size="compact-sm"
-                                              variant="subtle"
-                                              color="red"
-                                              onClick={() =>
-                                                setRejectTarget({ stageId: s.id, dayIndex: day.index })
-                                              }
-                                            >
-                                              {t("wd.reject")}
-                                            </Button>
                                           </Group>
-                                        ) : isMe && active && !myTurn ? (
-                                          <Text size="11px" c="gray.5" ta="right" style={{ flex: "none", maxWidth: 88 }}>
-                                            {t("wd.waitTurn")}
+                                          <Text size="12px" c="gray.6" truncate>
+                                            {fio(a)}
+                                            {isMe ? ` · ${t("wd.you")}` : ""}
                                           </Text>
-                                        ) : (
-                                          <Box
-                                            style={{
-                                              width: 22,
-                                              height: 22,
-                                              borderRadius: 99,
-                                              border: "2px solid var(--mantine-color-gray-3)",
-                                              flex: "none",
-                                            }}
-                                          />
-                                        )}
+                                          {so?.decision === "accepted" && (
+                                            <Text size="11px" c="teal.6">
+                                              {formatDateTime(so.signedAt)}
+                                            </Text>
+                                          )}
+                                          {so?.decision === "rejected" && so.comment && (
+                                            <Text size="11.5px" c="red.6" lh={1.35} style={{ wordBreak: "break-word" }}>
+                                              «{so.comment}»
+                                            </Text>
+                                          )}
+                                        </div>
                                       </Group>
-                                    );
-                                  })}
-                                </Stack>
-                              </Box>
-                            </Group>
-                          </Box>
-                        );
-                      })}
 
-                    {/* когда позиция принята полностью */}
-                    {s.status === "done" && s.finishedAt && (
-                      <Group gap={6} mt="sm" wrap="nowrap">
-                        <ThemeIcon color="teal" variant="light" size={20} radius="xl">
-                          <IconCheck size={13} />
-                        </ThemeIcon>
-                        <Text size="xs" c="teal.7">
-                          {t("wd.stageDone")} · {formatDate(s.finishedAt)}
-                        </Text>
-                      </Group>
-                    )}
-                  </Card>
-                </motion.div>
+                                      {/* состояние / действия */}
+                                      {so?.decision === "accepted" ? (
+                                        canActNow ? (
+                                          <Tooltip label={t("wd.unsign")} withArrow>
+                                            <ActionIcon
+                                              color="teal"
+                                              variant="filled"
+                                              radius="xl"
+                                              size={26}
+                                              loading={busyKey}
+                                              onClick={() => signOff(s.id, day.index, "none")}
+                                            >
+                                              <IconCheck size={15} />
+                                            </ActionIcon>
+                                          </Tooltip>
+                                        ) : (
+                                          <ThemeIcon color="teal" variant="filled" radius="xl" size={26}>
+                                            <IconCheck size={15} />
+                                          </ThemeIcon>
+                                        )
+                                      ) : so?.decision === "rejected" ? (
+                                        canActNow ? (
+                                          <Button
+                                            size="compact-sm"
+                                            variant="light"
+                                            color="teal"
+                                            loading={busyKey}
+                                            style={{ flex: "none" }}
+                                            onClick={() => signOff(s.id, day.index, "accepted")}
+                                          >
+                                            {t("wd.sign")}
+                                          </Button>
+                                        ) : (
+                                          <ThemeIcon color="red" variant="light" radius="xl" size={26}>
+                                            <IconX size={14} />
+                                          </ThemeIcon>
+                                        )
+                                      ) : canActNow ? (
+                                        <Group gap={5} wrap="nowrap" style={{ flex: "none" }}>
+                                          <Button
+                                            size="compact-sm"
+                                            variant="light"
+                                            color="teal"
+                                            loading={busyKey}
+                                            onClick={() => signOff(s.id, day.index, "accepted")}
+                                          >
+                                            {t("wd.sign")}
+                                          </Button>
+                                          <Button
+                                            size="compact-sm"
+                                            variant="subtle"
+                                            color="red"
+                                            onClick={() =>
+                                              setRejectTarget({ stageId: s.id, dayIndex: day.index })
+                                            }
+                                          >
+                                            {t("wd.reject")}
+                                          </Button>
+                                        </Group>
+                                      ) : isMe && active && !myTurn ? (
+                                        <Text size="11px" c="gray.5" ta="right" style={{ flex: "none", maxWidth: 88 }}>
+                                          {t("wd.waitTurn")}
+                                        </Text>
+                                      ) : (
+                                        <Box
+                                          style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: 99,
+                                            border: "2px solid var(--mantine-color-gray-3)",
+                                            flex: "none",
+                                          }}
+                                        />
+                                      )}
+                                    </Group>
+                                  );
+                                })}
+                              </Stack>
+                            </Box>
+                          </Group>
+                        </Box>
+                      );
+                    })}
+
+                  {/* когда позиция принята полностью */}
+                  {s.status === "done" && s.finishedAt && (
+                    <Group gap={6} mt="sm" wrap="nowrap">
+                      <ThemeIcon color="teal" variant="light" size={20} radius="xl">
+                        <IconCheck size={13} />
+                      </ThemeIcon>
+                      <Text size="xs" c="teal.7">
+                        {t("wd.stageDone")} · {formatDate(s.finishedAt)}
+                      </Text>
+                    </Group>
+                  )}
+                </Card>
               </Timeline.Item>
             );
           })}

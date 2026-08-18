@@ -29,12 +29,12 @@ import {
   IconTrash,
   IconClock,
 } from "@tabler/icons-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
+import { revealDelay } from "@/lib/anim";
 
 interface Work {
   id: string;
@@ -50,8 +50,8 @@ interface Work {
 interface Stage {
   id: string;
   number: number;
-  nameRu: string;
-  nameUz: string | null;
+  nameRu: string | null;
+  nameUz: string;
   durationSeconds: number;
   workerCount: number | null;
   note: string | null;
@@ -69,7 +69,6 @@ type WorkRow = {
   dayTo: number | "";
 };
 
-const MotionTr = motion.create("tr");
 const emptyRow = (): WorkRow => ({
   nameUz: "",
   nameRu: "",
@@ -113,8 +112,8 @@ export default function StagesPage() {
     try {
       const r = await apiFetch<{ stages: Stage[] }>("/api/stages");
       setStages(r.stages);
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
@@ -135,7 +134,7 @@ export default function StagesPage() {
   function openEdit(s: Stage) {
     setEditing(s);
     setNumber(s.number);
-    setNameRu(s.nameRu);
+    setNameRu(s.nameRu ?? "");
     setNameUz(s.nameUz ?? "");
     setWorks(
       s.works.length
@@ -215,8 +214,8 @@ export default function StagesPage() {
       }
       setModalOpen(false);
       load();
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setSaving(false);
     }
@@ -237,8 +236,8 @@ export default function StagesPage() {
           await apiFetch(`/api/stages/${s.id}`, { method: "DELETE" });
           notifications.show({ color: "teal", message: t("stages.deleted") });
           load();
-        } catch (e: any) {
-          notifications.show({ color: "red", message: e.message });
+        } catch (e) {
+          showError(e);
         }
       },
     });
@@ -280,90 +279,86 @@ export default function StagesPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                <AnimatePresence>
-                  {stages.map((s, i) => (
-                    <MotionTr
-                      key={s.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: i * 0.02 }}
-                    >
-                      <Table.Td>
-                        <ThemeIcon variant="light" color="steel" radius="xl">
-                          {s.number}
-                        </ThemeIcon>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text fw={600} size="sm">
-                          {pickName(s, lang)}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {t("stages.worksCount", { n: s.works.length })}
-                          {/* людей на позиции — сумма по работам */}
-                          {(() => {
-                            const n = s.works.reduce((a, w) => a + (w.workerCount ?? 0), 0);
-                            return n ? ` · ${t("wd.workers", { n })}` : "";
-                          })()}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge
-                          variant="light"
-                          color="grape"
-                          leftSection={<IconClock size={13} />}
-                        >
-                          {t("stages.daysValue", { n: durToDays(s.durationSeconds) })}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4}>
-                          {sehList(s.works).length ? (
-                            sehList(s.works).map((sh) => (
-                              <Badge key={sh} size="xs" variant="light" color="steel">
-                                {t("wd.sehShort", { n: sh })}
-                              </Badge>
-                            ))
-                          ) : (
-                            <Text size="sm" c="dimmed">
-                              —
-                            </Text>
-                          )}
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        {(can("stages", "update") || can("stages", "delete")) && (
-                          <Menu position="bottom-end" shadow="md">
-                            <Menu.Target>
-                              <ActionIcon variant="subtle" color="gray">
-                                <IconDots size={18} />
-                              </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              {can("stages", "update") && (
-                                <Menu.Item
-                                  leftSection={<IconPencil size={16} />}
-                                  onClick={() => openEdit(s)}
-                                >
-                                  {t("common.edit")}
-                                </Menu.Item>
-                              )}
-                              {can("stages", "delete") && (
-                                <Menu.Item
-                                  color="red"
-                                  leftSection={<IconTrash size={16} />}
-                                  onClick={() => confirmDelete(s)}
-                                >
-                                  {t("common.delete")}
-                                </Menu.Item>
-                              )}
-                            </Menu.Dropdown>
-                          </Menu>
+                {stages.map((s, i) => (
+                  <Table.Tr
+                    key={s.id}
+                    className="reveal-up"
+                    style={{ animationDelay: revealDelay(i) }}
+                  >
+                    <Table.Td>
+                      <ThemeIcon variant="light" color="steel" radius="xl">
+                        {s.number}
+                      </ThemeIcon>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text fw={600} size="sm">
+                        {pickName(s, lang)}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {t("stages.worksCount", { n: s.works.length })}
+                        {/* людей на позиции — сумма по работам */}
+                        {(() => {
+                          const n = s.works.reduce((a, w) => a + (w.workerCount ?? 0), 0);
+                          return n ? ` · ${t("wd.workers", { n })}` : "";
+                        })()}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        variant="light"
+                        color="grape"
+                        leftSection={<IconClock size={13} />}
+                      >
+                        {t("stages.daysValue", { n: durToDays(s.durationSeconds) })}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap={4}>
+                        {sehList(s.works).length ? (
+                          sehList(s.works).map((sh) => (
+                            <Badge key={sh} size="xs" variant="light" color="steel">
+                              {t("wd.sehShort", { n: sh })}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
                         )}
-                      </Table.Td>
-                    </MotionTr>
-                  ))}
-                </AnimatePresence>
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      {(can("stages", "update") || can("stages", "delete")) && (
+                        <Menu position="bottom-end" shadow="md">
+                          <Menu.Target>
+                            <ActionIcon variant="subtle" color="gray">
+                              <IconDots size={18} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            {can("stages", "update") && (
+                              <Menu.Item
+                                leftSection={<IconPencil size={16} />}
+                                onClick={() => openEdit(s)}
+                              >
+                                {t("common.edit")}
+                              </Menu.Item>
+                            )}
+                            {can("stages", "delete") && (
+                              <Menu.Item
+                                color="red"
+                                leftSection={<IconTrash size={16} />}
+                                onClick={() => confirmDelete(s)}
+                              >
+                                {t("common.delete")}
+                              </Menu.Item>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>

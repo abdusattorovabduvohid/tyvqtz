@@ -70,7 +70,12 @@ export const theme = createTheme({
       defaultProps: {
         radius: "lg",
         centered: true,
-        overlayProps: { backgroundOpacity: 0.6, blur: 6 },
+        // Затемнение без blur. backdrop-filter на слое во весь экран телефон
+        // пересчитывает на каждом кадре — в модалках с полями это ощущалось
+        // как залипание при вводе. Ровно по той же причине размытие уже убрали
+        // с шапки и с карточки входа. Затемнение чуть плотнее, чтобы фокус на
+        // окне не потерялся.
+        overlayProps: { backgroundOpacity: 0.65 },
       },
     },
   },

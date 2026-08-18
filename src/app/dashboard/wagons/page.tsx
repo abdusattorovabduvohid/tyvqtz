@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Button,
@@ -22,7 +22,7 @@ import {
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconPlus, IconBox } from "@tabler/icons-react";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
@@ -62,7 +62,7 @@ function WagonsContent() {
   const [executorIds, setExecutorIds] = useState<string[]>([]);
   const [creationApproverIds, setCreationApproverIds] = useState<string[]>([]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [w, tps] = await Promise.all([
@@ -75,15 +75,16 @@ function WagonsContent() {
       setTypes(
         tps.types.map((x) => ({ value: x.id, label: pickName(x, lang) }))
       );
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
-  }
+  }, [lang]);
+
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   // Кнопки жмут только ответственные: сняли из ответственных — снимаем и отсюда.
   useEffect(() => {
@@ -151,8 +152,8 @@ function WagonsContent() {
           };
         })
       );
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     }
   }
 
@@ -199,8 +200,8 @@ function WagonsContent() {
       });
       setModalOpen(false);
       load();
-    } catch (e: any) {
-      notifications.show({ color: "red", title: "Ошибка", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setSaving(false);
     }
@@ -221,8 +222,8 @@ function WagonsContent() {
           await apiFetch(`/api/wagons/${w.id}`, { method: "DELETE" });
           notifications.show({ color: "teal", message: t("wagons.deleted") });
           load();
-        } catch (e: any) {
-          notifications.show({ color: "red", message: e.message });
+        } catch (e) {
+          showError(e);
         }
       },
     });

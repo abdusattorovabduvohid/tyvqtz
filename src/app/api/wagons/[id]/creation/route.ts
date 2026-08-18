@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser, handleError, ApiError } from "@/lib/api";
+import { creationActionSchema } from "@/lib/api-schemas";
 import { can } from "@/lib/permissions";
 import { notifyUsers, notifyUsersAndGroup, personName } from "@/lib/notify";
-
-const schema = z.object({
-  action: z.enum(["approve", "deny", "reset"]),
-  comment: z.string().optional(),
-});
 
 type Params = { params: { id: string } };
 
@@ -16,7 +12,7 @@ type Params = { params: { id: string } };
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireUser();
-    const { action, comment } = schema.parse(await req.json());
+    const { action, comment } = creationActionSchema.parse(await req.json());
 
     const wagon = await prisma.wagon.findUnique({
       where: { id: params.id },

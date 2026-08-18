@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import {
+  asDecision,
+  asStageStatus,
+  type MyCreation,
+  type MyStage,
+  type MyTask,
+} from "@/lib/api-types";
 import { requireUser, handleError } from "@/lib/api";
 import { wagonSchedule, splitWorksIntoDays } from "@/lib/format";
 
@@ -38,8 +45,8 @@ export async function GET() {
     });
 
     const now = Date.now();
-    const tasks: any[] = [];
-    const mine: any[] = [];
+    const tasks: MyTask[] = [];
+    const mine: MyStage[] = [];
 
     for (const w of wagons) {
       const start = w.plannedStart ?? w.createdAt;
@@ -116,7 +123,7 @@ export async function GET() {
           stageNumber: s.number,
           stageNameRu: s.nameRu,
           stageNameUz: s.nameUz,
-          status: s.status, // pending | in_progress | done | blocked
+          status: asStageStatus(s.status),
           locked,
           acceptedDays: myAcceptedDays,
           totalDays: days.length,
@@ -146,7 +153,7 @@ export async function GET() {
       },
     });
 
-    const creations = myCreationRows.map((row) => {
+    const creations: MyCreation[] = myCreationRows.map((row) => {
       const all = row.wagon.creationApprovals;
       const approved = all.filter((a) => a.decision === "approved").length;
       const myTurn = all
@@ -158,8 +165,8 @@ export async function GET() {
         nameUz: row.wagon.nameUz,
         number: row.wagon.number,
         wagonType: row.wagon.wagonType,
-        createdAt: row.wagon.createdAt,
-        myDecision: row.decision,
+        createdAt: row.wagon.createdAt.toISOString(),
+        myDecision: asDecision(row.decision),
         myTurn,
         approval: { approved, total: all.length },
       };

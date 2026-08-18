@@ -1,18 +1,12 @@
 "use client";
 
 import { Group, Stack, Text, Title } from "@mantine/core";
-import { motion } from "framer-motion";
 
 export function Page({ children }: { children: React.ReactNode }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      style={{ maxWidth: 1200, margin: "0 auto" }}
-    >
+    <div className="reveal-up" style={{ maxWidth: 1200, margin: "0 auto" }}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 

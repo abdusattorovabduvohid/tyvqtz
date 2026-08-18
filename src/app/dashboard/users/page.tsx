@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Button,
   Card,
@@ -24,15 +24,14 @@ import {
   IconTrash,
   IconSearch,
 } from "@tabler/icons-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
+import { revealDelay } from "@/lib/anim";
 import { UserFormModal, type UserRow } from "@/components/UserFormModal";
 
-const MotionTr = motion.create("tr");
 
 export default function UsersPage() {
   const can = useCan();
@@ -44,7 +43,7 @@ export default function UsersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [u, r] = await Promise.all([
@@ -55,16 +54,16 @@ export default function UsersPage() {
       ]);
       setUsers(u.users);
       setRoles(r.roles.map((x) => ({ value: x.id, label: pickName(x, lang) })));
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
-  }
+  }, [lang]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   function openCreate() {
     setEditing(null);
@@ -90,8 +89,8 @@ export default function UsersPage() {
           await apiFetch(`/api/users/${u.id}`, { method: "DELETE" });
           notifications.show({ color: "teal", message: t("users.deleted") });
           load();
-        } catch (e: any) {
-          notifications.show({ color: "red", message: e.message });
+        } catch (e) {
+          showError(e);
         }
       },
     });
@@ -154,96 +153,92 @@ export default function UsersPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                <AnimatePresence>
-                  {filtered.map((u, i) => (
-                    <MotionTr
-                      key={u.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                    >
-                      <Table.Td>
-                        <Group gap="sm">
-                          <Avatar
-                            src={u.photo || undefined}
-                            radius="xl"
-                            color="steel"
-                          >
-                            {u.firstName?.[0]}
-                            {u.lastName?.[0]}
-                          </Avatar>
-                          <div>
-                            <Group gap={6} wrap="nowrap">
-                              <Text fw={600} size="sm">
-                                {u.lastName} {u.firstName}
-                              </Text>
-                              {u.seh && (
-                                <Badge size="xs" variant="light" color="steel">
-                                  {t("wd.sehShort", { n: u.seh })}
-                                </Badge>
-                              )}
-                            </Group>
-                            {u.middleName && (
-                              <Text size="xs" c="dimmed">
-                                {u.middleName}
-                              </Text>
+                {filtered.map((u, i) => (
+                  <Table.Tr
+                    key={u.id}
+                    className="reveal-up"
+                    style={{ animationDelay: revealDelay(i) }}
+                  >
+                    <Table.Td>
+                      <Group gap="sm">
+                        <Avatar
+                          src={u.photo || undefined}
+                          radius="xl"
+                          color="steel"
+                        >
+                          {u.firstName?.[0]}
+                          {u.lastName?.[0]}
+                        </Avatar>
+                        <div>
+                          <Group gap={6} wrap="nowrap">
+                            <Text fw={600} size="sm">
+                              {u.lastName} {u.firstName}
+                            </Text>
+                            {u.seh && (
+                              <Badge size="xs" variant="light" color="steel">
+                                {t("wd.sehShort", { n: u.seh })}
+                              </Badge>
                             )}
-                          </div>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{u.login}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge variant="light" color="blue">
-                          {pickName(u.role, lang)}
+                          </Group>
+                          {u.middleName && (
+                            <Text size="xs" c="dimmed">
+                              {u.middleName}
+                            </Text>
+                          )}
+                        </div>
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{u.login}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color="blue">
+                        {pickName(u.role, lang)}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {u.isActive ? (
+                        <Badge variant="dot" color="teal">
+                          {t("users.active")}
                         </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        {u.isActive ? (
-                          <Badge variant="dot" color="teal">
-                            {t("users.active")}
-                          </Badge>
-                        ) : (
-                          <Badge variant="dot" color="gray">
-                            {t("users.inactive")}
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {(can("users", "update") || can("users", "delete")) && (
-                          <Menu position="bottom-end" shadow="md">
-                            <Menu.Target>
-                              <ActionIcon variant="subtle" color="gray">
-                                <IconDots size={18} />
-                              </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              {can("users", "update") && (
-                                <Menu.Item
-                                  leftSection={<IconPencil size={16} />}
-                                  onClick={() => openEdit(u)}
-                                >
-                                  {t("common.edit")}
-                                </Menu.Item>
-                              )}
-                              {can("users", "delete") && (
-                                <Menu.Item
-                                  color="red"
-                                  leftSection={<IconTrash size={16} />}
-                                  onClick={() => confirmDelete(u)}
-                                >
-                                  {t("common.delete")}
-                                </Menu.Item>
-                              )}
-                            </Menu.Dropdown>
-                          </Menu>
-                        )}
-                      </Table.Td>
-                    </MotionTr>
-                  ))}
-                </AnimatePresence>
+                      ) : (
+                        <Badge variant="dot" color="gray">
+                          {t("users.inactive")}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {(can("users", "update") || can("users", "delete")) && (
+                        <Menu position="bottom-end" shadow="md">
+                          <Menu.Target>
+                            <ActionIcon variant="subtle" color="gray">
+                              <IconDots size={18} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            {can("users", "update") && (
+                              <Menu.Item
+                                leftSection={<IconPencil size={16} />}
+                                onClick={() => openEdit(u)}
+                              >
+                                {t("common.edit")}
+                              </Menu.Item>
+                            )}
+                            {can("users", "delete") && (
+                              <Menu.Item
+                                color="red"
+                                leftSection={<IconTrash size={16} />}
+                                onClick={() => confirmDelete(u)}
+                              >
+                                {t("common.delete")}
+                              </Menu.Item>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>

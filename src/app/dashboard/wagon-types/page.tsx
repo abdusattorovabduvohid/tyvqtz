@@ -25,21 +25,19 @@ import {
   IconTrash,
   IconTrain,
 } from "@tabler/icons-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
+import { revealDelay } from "@/lib/anim";
 
 interface WagonType {
   id: string;
-  nameRu: string;
-  nameUz: string | null;
+  nameRu: string | null;
+  nameUz: string;
   _count?: { wagons: number };
 }
-
-const MotionTr = motion.create("tr");
 
 export default function WagonTypesPage() {
   const can = useCan();
@@ -57,8 +55,8 @@ export default function WagonTypesPage() {
     try {
       const r = await apiFetch<{ types: WagonType[] }>("/api/wagon-types");
       setTypes(r.types);
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setLoading(false);
     }
@@ -75,7 +73,7 @@ export default function WagonTypesPage() {
   }
   function openEdit(wt: WagonType) {
     setEditing(wt);
-    setNameRu(wt.nameRu);
+    setNameRu(wt.nameRu ?? "");
     setNameUz(wt.nameUz ?? "");
     setModalOpen(true);
   }
@@ -103,8 +101,8 @@ export default function WagonTypesPage() {
       }
       setModalOpen(false);
       load();
-    } catch (e: any) {
-      notifications.show({ color: "red", message: e.message });
+    } catch (e) {
+      showError(e);
     } finally {
       setSaving(false);
     }
@@ -123,8 +121,8 @@ export default function WagonTypesPage() {
           await apiFetch(`/api/wagon-types/${wt.id}`, { method: "DELETE" });
           notifications.show({ color: "teal", message: t("wtypes.deleted") });
           load();
-        } catch (e: any) {
-          notifications.show({ color: "red", message: e.message });
+        } catch (e) {
+          showError(e);
         }
       },
     });
@@ -164,62 +162,58 @@ export default function WagonTypesPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                <AnimatePresence>
-                  {types.map((wt, i) => (
-                    <MotionTr
-                      key={wt.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                    >
-                      <Table.Td>
-                        <Group gap="sm">
-                          <IconTrain size={20} color="var(--mantine-color-teal-6)" />
-                          <Text fw={600} size="sm">
-                            {pickName(wt, lang)}
-                          </Text>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge variant="light" color="gray">
-                          {wt._count?.wagons ?? 0}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        {(can("wagon-types", "update") ||
-                          can("wagon-types", "delete")) && (
-                          <Menu position="bottom-end" shadow="md">
-                            <Menu.Target>
-                              <ActionIcon variant="subtle" color="gray">
-                                <IconDots size={18} />
-                              </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              {can("wagon-types", "update") && (
-                                <Menu.Item
-                                  leftSection={<IconPencil size={16} />}
-                                  onClick={() => openEdit(wt)}
-                                >
-                                  {t("common.edit")}
-                                </Menu.Item>
-                              )}
-                              {can("wagon-types", "delete") && (
-                                <Menu.Item
-                                  color="red"
-                                  leftSection={<IconTrash size={16} />}
-                                  onClick={() => confirmDelete(wt)}
-                                >
-                                  {t("common.delete")}
-                                </Menu.Item>
-                              )}
-                            </Menu.Dropdown>
-                          </Menu>
-                        )}
-                      </Table.Td>
-                    </MotionTr>
-                  ))}
-                </AnimatePresence>
+                {types.map((wt, i) => (
+                  <Table.Tr
+                    key={wt.id}
+                    className="reveal-up"
+                    style={{ animationDelay: revealDelay(i) }}
+                  >
+                    <Table.Td>
+                      <Group gap="sm">
+                        <IconTrain size={20} color="var(--mantine-color-teal-6)" />
+                        <Text fw={600} size="sm">
+                          {pickName(wt, lang)}
+                        </Text>
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color="gray">
+                        {wt._count?.wagons ?? 0}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {(can("wagon-types", "update") ||
+                        can("wagon-types", "delete")) && (
+                        <Menu position="bottom-end" shadow="md">
+                          <Menu.Target>
+                            <ActionIcon variant="subtle" color="gray">
+                              <IconDots size={18} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            {can("wagon-types", "update") && (
+                              <Menu.Item
+                                leftSection={<IconPencil size={16} />}
+                                onClick={() => openEdit(wt)}
+                              >
+                                {t("common.edit")}
+                              </Menu.Item>
+                            )}
+                            {can("wagon-types", "delete") && (
+                              <Menu.Item
+                                color="red"
+                                leftSection={<IconTrash size={16} />}
+                                onClick={() => confirmDelete(wt)}
+                              >
+                                {t("common.delete")}
+                              </Menu.Item>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>

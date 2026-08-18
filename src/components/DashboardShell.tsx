@@ -28,7 +28,6 @@ import {
   IconClipboardList,
   IconBell,
 } from "@tabler/icons-react";
-import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/client";
 import { UserProvider, type ClientUser } from "./UserContext";
 import { PushAutoHeal } from "./PushAutoHeal";
@@ -37,6 +36,7 @@ import { useI18n } from "./I18nProvider";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Logo } from "./Logo";
 import { pickName } from "@/lib/i18n/translations";
+import { revealDelay } from "@/lib/anim";
 
 const ICONS: Record<string, React.ReactNode> = {
   dashboard: <IconLayoutDashboard size={20} />,
@@ -208,76 +208,72 @@ export function DashboardShell({
                   ? pathname === "/dashboard"
                   : pathname.startsWith(item.href);
               return (
-                <motion.div
+                <UnstyledButton
                   key={item.key}
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  whileHover={{ x: 3 }}
+                  component={Link}
+                  href={item.href}
+                  onClick={() => opened && toggle()}
+                  className="reveal-left nudge-x"
+                  style={{
+                    position: "relative",
+                    display: "block",
+                    width: "100%",
+                    padding: `${rem(11)} ${rem(12)}`,
+                    borderRadius: rem(12),
+                    marginBottom: rem(6),
+                    animationDelay: revealDelay(i),
+                    background: active
+                      ? "linear-gradient(135deg, rgba(47,102,201,0.35), rgba(34,167,224,0.18))"
+                      : "transparent",
+                    border: active
+                      ? "1px solid rgba(120,170,240,0.35)"
+                      : "1px solid transparent",
+                    color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
+                    boxShadow: active
+                      ? "0 8px 20px rgba(6,18,45,0.5)"
+                      : "none",
+                    transition:
+                      "background 150ms ease, color 150ms ease, transform 160ms ease",
+                  }}
                 >
-                  <UnstyledButton
-                    component={Link}
-                    href={item.href}
-                    onClick={() => opened && toggle()}
-                    style={{
-                      position: "relative",
-                      display: "block",
-                      width: "100%",
-                      padding: `${rem(11)} ${rem(12)}`,
-                      borderRadius: rem(12),
-                      marginBottom: rem(6),
-                      background: active
-                        ? "linear-gradient(135deg, rgba(47,102,201,0.35), rgba(34,167,224,0.18))"
-                        : "transparent",
-                      border: active
-                        ? "1px solid rgba(120,170,240,0.35)"
-                        : "1px solid transparent",
-                      color: active ? "#ffffff" : "rgba(255,255,255,0.78)",
-                      boxShadow: active
-                        ? "0 8px 20px rgba(6,18,45,0.5)"
-                        : "none",
-                      transition: "background 150ms ease, color 150ms ease",
-                    }}
-                  >
-                    {active && (
-                      <span
+                  {active && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 10,
+                        bottom: 10,
+                        width: 3,
+                        borderRadius: 3,
+                        background:
+                          "linear-gradient(180deg, #4dabf7, #22a7e0)",
+                      }}
+                    />
+                  )}
+                  <Group justify="space-between" wrap="nowrap">
+                    <Group gap="sm" wrap="nowrap">
+                      <Box
                         style={{
-                          position: "absolute",
-                          left: 0,
-                          top: 10,
-                          bottom: 10,
-                          width: 3,
-                          borderRadius: 3,
-                          background:
-                            "linear-gradient(180deg, #4dabf7, #22a7e0)",
+                          width: 32,
+                          height: 32,
+                          borderRadius: 9,
+                          display: "grid",
+                          placeItems: "center",
+                          background: active
+                            ? "linear-gradient(135deg, #2f66c9, #22a7e0)"
+                            : "rgba(255,255,255,0.08)",
+                          color: active ? "#fff" : "rgba(255,255,255,0.85)",
                         }}
-                      />
-                    )}
-                    <Group justify="space-between" wrap="nowrap">
-                      <Group gap="sm" wrap="nowrap">
-                        <Box
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 9,
-                            display: "grid",
-                            placeItems: "center",
-                            background: active
-                              ? "linear-gradient(135deg, #2f66c9, #22a7e0)"
-                              : "rgba(255,255,255,0.08)",
-                            color: active ? "#fff" : "rgba(255,255,255,0.85)",
-                          }}
-                        >
-                          {ICONS[item.key] ?? <IconBox size={20} />}
-                        </Box>
-                        <Text size="sm" fw={active ? 700 : 500} c="inherit">
-                          {navLabel(item.key)}
-                        </Text>
-                      </Group>
-                      {active && <IconChevronRight size={16} />}
+                      >
+                        {ICONS[item.key] ?? <IconBox size={20} />}
+                      </Box>
+                      <Text size="sm" fw={active ? 700 : 500} c="inherit">
+                        {navLabel(item.key)}
+                      </Text>
                     </Group>
-                  </UnstyledButton>
-                </motion.div>
+                    {active && <IconChevronRight size={16} />}
+                  </Group>
+                </UnstyledButton>
               );
             })}
           </AppShell.Section>

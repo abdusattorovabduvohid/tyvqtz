@@ -16,18 +16,17 @@ import {
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconLock, IconUser, IconInfoCircle, IconExternalLink } from "@tabler/icons-react";
-import { motion } from "framer-motion";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, showError } from "@/lib/client";
 import { useI18n } from "@/components/I18nProvider";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Logo } from "@/components/Logo";
 
-// плавающие цветные пятна (aurora)
+// цветные пятна фона (aurora)
 const BLOBS = [
-  { color: "#3a6fcc", size: 560, top: "-12%", left: "-8%", dur: 16 },
-  { color: "#22a7e0", size: 460, top: "45%", left: "60%", dur: 20 },
-  { color: "#1c4288", size: 620, top: "60%", left: "-10%", dur: 24 },
-  { color: "#4dabf7", size: 380, top: "-6%", left: "62%", dur: 18 },
+  { color: "#3a6fcc", size: 560, top: "-12%", left: "-8%" },
+  { color: "#22a7e0", size: 460, top: "45%", left: "60%" },
+  { color: "#1c4288", size: 620, top: "60%", left: "-10%" },
+  { color: "#4dabf7", size: 380, top: "-6%", left: "62%" },
 ];
 
 function LoginContent() {
@@ -59,12 +58,8 @@ function LoginContent() {
       const from = params.get("from") || "/dashboard";
       router.replace(from);
       router.refresh();
-    } catch (e: any) {
-      notifications.show({
-        color: "red",
-        title: t("login.error"),
-        message: e.message,
-      });
+    } catch (e) {
+      showError(e, t("login.error"));
     } finally {
       setLoading(false);
     }
@@ -123,10 +118,8 @@ function LoginContent() {
         <LanguageSwitcher onDark />
       </Box>
 
-      <motion.div
-        initial={{ opacity: 0, y: 26, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      <div
+        className="reveal-up"
         style={{ width: "100%", maxWidth: 440, zIndex: 2 }}
       >
         <Box
@@ -189,20 +182,19 @@ function LoginContent() {
                 radius="md"
                 {...form.getInputProps("password")}
               />
-              <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-                <Button
-                  type="submit"
-                  size="md"
-                  fullWidth
-                  mt={4}
-                  radius="md"
-                  loading={loading}
-                  variant="gradient"
-                  gradient={{ from: "#2f66c9", to: "#22a7e0", deg: 45 }}
-                >
-                  {t("login.submit")}
-                </Button>
-              </motion.div>
+              <Button
+                type="submit"
+                size="md"
+                fullWidth
+                mt={4}
+                radius="md"
+                loading={loading}
+                variant="gradient"
+                gradient={{ from: "#2f66c9", to: "#22a7e0", deg: 45 }}
+                className="tap"
+              >
+                {t("login.submit")}
+              </Button>
             </Stack>
           </form>
 
@@ -239,7 +231,7 @@ function LoginContent() {
             </Anchor>
           </Box>
         </Box>
-      </motion.div>
+      </div>
     </Box>
   );
 }

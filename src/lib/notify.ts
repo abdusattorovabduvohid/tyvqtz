@@ -20,6 +20,27 @@ export interface NotifyPayload {
   tag?: string;
 }
 
+// ── Разбор ошибок web-push ────────────────────────────────────────────────
+// В catch приходит unknown, а не готовый объект библиотеки: это может быть и
+// обрыв сети, и таймаут. Поля читаем с проверкой, иначе чужая ошибка
+// притворилась бы ответом push-сервиса и мы отписали бы живое устройство.
+
+/** HTTP-код ответа push-сервиса, если он вообще успел ответить. */
+function pushStatusCode(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null || !("statusCode" in err)) return undefined;
+  return Number((err as { statusCode: unknown }).statusCode) || undefined;
+}
+
+/** Подробность для лога: у web-push это body ответа, у обычной ошибки — message. */
+function pushErrorDetail(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const e = err as { body?: unknown; message?: unknown };
+    if (typeof e.body === "string" && e.body) return e.body;
+    if (typeof e.message === "string" && e.message) return e.message;
+  }
+  return String(err);
+}
+
 // Адрес сайта для ссылок в телеграме и в клике по пушу.
 export function appUrl(): string {
   const raw =
@@ -94,8 +115,8 @@ async function sendWebPush(userIds: string[], payload: NotifyPayload) {
           { TTL: 60 * 60 * 12 }
         );
         alive.push(s.id);
-      } catch (err: any) {
-        const code = err?.statusCode;
+      } catch (err) {
+        const code = pushStatusCode(err);
         if (code === 404 || code === 410) {
           // подписка мертва: браузер удалён, кеш очищен, PWA снесена
           dead.push(s.id);
@@ -103,9 +124,9 @@ async function sendWebPush(userIds: string[], payload: NotifyPayload) {
           // push-сервис не принял нашу подпись: чаще всего сменился (или не
           // подхватился) VAPID-ключ. Сразу не рубим — считаем отказы.
           failed.push(s.id);
-          console.error("push rejected (VAPID?)", code, err?.body ?? err?.message);
+          console.error("push rejected (VAPID?)", code, pushErrorDetail(err));
         } else {
-          console.error("push error", code, err?.body ?? err?.message);
+          console.error("push error", code, pushErrorDetail(err));
         }
       }
     })
