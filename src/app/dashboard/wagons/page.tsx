@@ -1,19 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState, Suspense } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import {
   Button,
   Card,
   SimpleGrid,
-  Group,
   Text,
   Center,
   Loader,
-  Modal,
-  TextInput,
-  Select,
-  MultiSelect,
   Stack,
   ThemeIcon,
   SegmentedControl,
@@ -27,9 +23,15 @@ import { Page, PageHeader } from "@/components/Page";
 import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
-import { wagonSchedule, formatDate } from "@/lib/format";
-import { OrderedUserPicker } from "@/components/OrderedUserPicker";
 import { WagonCard, type WagonListItem as Wagon } from "@/components/WagonCard";
+
+// Форма создания — отдельным чанком. Список вагонов открывают с телефона
+// каждый день, а создают их редко и не все: незачем возить эту форму в
+// бандле страницы. Грузится при первом нажатии «Создать вагон».
+const WagonCreateModal = dynamic(
+  () => import("@/components/WagonCreateModal").then((m) => m.WagonCreateModal),
+  { ssr: false }
+);
 
 function WagonsContent() {
   const can = useCan();
@@ -42,25 +44,9 @@ function WagonsContent() {
   const [types, setTypes] = useState<{ value: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [nameRu, setNameRu] = useState("");
-  const [nameUz, setNameUz] = useState("");
-  const [number, setNumber] = useState("");
-  const [typeId, setTypeId] = useState<string | null>(null);
-  // «Ish boshlanish sanasi» в формате YYYY-MM-DD (нативный date input)
-  const [startDate, setStartDate] = useState("");
-  const [allStages, setAllStages] = useState<
-    { value: string; label: string }[]
-  >([]);
-  const [stageIds, setStageIds] = useState<string[]>([]);
-  // длительности этапов (для расчёта авто-даты окончания)
-  const [stageDur, setStageDur] = useState<Record<string, number>>({});
-  const [userOptions, setUserOptions] = useState<
-    { value: string; label: string }[]
-  >([]);
-  const [responsibleIds, setResponsibleIds] = useState<string[]>([]);
-  const [executorIds, setExecutorIds] = useState<string[]>([]);
-  const [creationApproverIds, setCreationApproverIds] = useState<string[]>([]);
+  // после первого открытия форму держим смонтированной — иначе при закрытии
+  // она пропадала бы мгновенно, без анимации
+  const [modalUsed, setModalUsed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,127 +71,6 @@ function WagonsContent() {
   useEffect(() => {
     load();
   }, [load]);
-
-  // Кнопки жмут только ответственные: сняли из ответственных — снимаем и отсюда.
-  useEffect(() => {
-    setExecutorIds((prev) => prev.filter((id) => responsibleIds.includes(id)));
-  }, [responsibleIds]);
-
-  const executorOptions = responsibleIds.flatMap((id) => {
-    const opt = userOptions.find((o) => o.value === id);
-    return opt ? [opt] : [];
-  });
-
-  async function openCreate() {
-    setNameRu("");
-    setNameUz("");
-    setNumber("");
-    setTypeId(null);
-    // по умолчанию — сегодня
-    setStartDate(new Date().toISOString().slice(0, 10));
-    setResponsibleIds([]);
-    setExecutorIds([]);
-    setCreationApproverIds([]);
-    setModalOpen(true);
-    try {
-      const [st, us] = await Promise.all([
-        apiFetch<{
-          stages: {
-            id: string;
-            number: number;
-            nameRu: string;
-            nameUz: string | null;
-            durationSeconds: number;
-          }[];
-        }>("/api/stages"),
-        apiFetch<{
-          users: {
-            id: string;
-            firstName: string;
-            lastName: string;
-            middleName: string | null;
-            seh: string | null;
-            role: { nameRu: string; nameUz: string | null };
-          }[];
-        }>("/api/options/users"),
-      ]);
-      const opts = st.stages.map((s) => ({
-        value: s.id,
-        label: `№${s.number} — ${pickName(s, lang)}`,
-      }));
-      setAllStages(opts);
-      setStageIds(opts.map((o) => o.value)); // по умолчанию все выбраны
-      setStageDur(
-        Object.fromEntries(st.stages.map((s) => [s.id, s.durationSeconds]))
-      );
-      setUserOptions(
-        us.users.map((u) => {
-          // основное — роль и цех; фамилия мелко, чтобы различать однофамильцев по роли
-          const role = pickName(u.role, lang);
-          const withSeh = u.seh ? `${role} · ${u.seh}-${t("wd.sehWord")}` : role;
-          const name = [u.lastName, u.firstName?.[0] && u.firstName[0] + "."]
-            .filter(Boolean)
-            .join(" ");
-          return {
-            value: u.id,
-            label: `${withSeh} (${name})`,
-          };
-        })
-      );
-    } catch (e) {
-      showError(e);
-    }
-  }
-
-  async function save() {
-    if (!nameUz.trim() || !number.trim() || !typeId) {
-      notifications.show({ color: "red", message: t("wagons.fillAll") });
-      return;
-    }
-    if (stageIds.length === 0) {
-      notifications.show({ color: "red", message: t("wagons.pickStage") });
-      return;
-    }
-    if (responsibleIds.length === 0) {
-      notifications.show({ color: "red", message: t("wagons.pickUsers") });
-      return;
-    }
-    if (executorIds.length === 0) {
-      notifications.show({ color: "red", message: t("wagons.pickExecutors") });
-      return;
-    }
-    if (creationApproverIds.length === 0) {
-      notifications.show({ color: "red", message: t("wagons.pickApprovers") });
-      return;
-    }
-    setSaving(true);
-    try {
-      await apiFetch("/api/wagons", {
-        method: "POST",
-        body: JSON.stringify({
-          nameUz: nameUz.trim(),
-          nameRu: nameRu.trim() || null,
-          number: number.trim(),
-          wagonTypeId: typeId,
-          plannedStart: startDate || null,
-          stageIds,
-          userIds: responsibleIds,
-          executorIds,
-          creationApproverIds,
-        }),
-      });
-      notifications.show({
-        color: "teal",
-        message: t("wagons.created", { n: stageIds.length }),
-      });
-      setModalOpen(false);
-      load();
-    } catch (e) {
-      showError(e);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   function confirmDelete(w: Wagon) {
     modals.openConfirmModal({
@@ -258,7 +123,13 @@ function WagonsContent() {
         subtitle={t("wagons.subtitle")}
         action={
           can("wagons", "create") && (
-            <Button leftSection={<IconPlus size={18} />} onClick={openCreate}>
+            <Button
+              leftSection={<IconPlus size={18} />}
+              onClick={() => {
+                setModalUsed(true);
+                setModalOpen(true);
+              }}
+            >
               {t("wagons.create")}
             </Button>
           )
@@ -310,147 +181,14 @@ function WagonsContent() {
         </SimpleGrid>
       )}
 
-      <Modal
-        opened={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={t("wagons.modalNew")}
-      >
-        <Stack>
-          <TextInput
-            label={`${t("wagons.name")} (${t("field.uz")})`}
-            placeholder="Masalan: Xopper-don tashuvchi"
-            withAsterisk
-            value={nameUz}
-            onChange={(e) => setNameUz(e.currentTarget.value)}
-          />
-          <TextInput
-            label={`${t("wagons.name")} (${t("field.ru")})`}
-            placeholder={t("wagons.namePlaceholder")}
-            value={nameRu}
-            onChange={(e) => setNameRu(e.currentTarget.value)}
-          />
-          <TextInput
-            label={t("wagons.number")}
-            placeholder={t("wagons.numberPlaceholder")}
-            withAsterisk
-            value={number}
-            onChange={(e) => setNumber(e.currentTarget.value)}
-          />
-          <Select
-            label={t("wagons.type")}
-            placeholder={
-              types.length
-                ? t("wagons.typePlaceholder")
-                : t("wagons.typePlaceholderEmpty")
-            }
-            withAsterisk
-            data={types}
-            value={typeId}
-            onChange={setTypeId}
-            searchable
-            nothingFoundMessage={t("wagons.noTypes")}
-          />
-
-          {/* Дата начала работ; дата сдачи считается автоматически */}
-          <TextInput
-            type="date"
-            label={t("wagons.startAt")}
-            withAsterisk
-            value={startDate}
-            onChange={(e) => setStartDate(e.currentTarget.value)}
-          />
-          {startDate && stageIds.length > 0 && (
-            <Text size="xs" c="dimmed" mt={-6}>
-              {t("wagons.deadlineAuto", {
-                date: formatDate(
-                  wagonSchedule(
-                    startDate,
-                    stageIds.map((id) => stageDur[id] ?? 0)
-                  ).end
-                ),
-              })}
-            </Text>
-          )}
-          <MultiSelect
-            label={t("wagons.stagesSelect", { n: stageIds.length })}
-            placeholder={
-              allStages.length
-                ? t("wagons.stagesSelectPlaceholder")
-                : t("wagons.stagesSelectEmpty")
-            }
-            data={allStages}
-            value={stageIds}
-            onChange={setStageIds}
-            searchable
-            clearable
-            hidePickedOptions
-            maxDropdownHeight={240}
-          />
-          <Text size="xs" c="dimmed">
-            {t("wagons.stagesHint")}
-          </Text>
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              {t("wagons.creationApprovers")}{" "}
-              <Text span c="red">
-                *
-              </Text>
-            </Text>
-            <OrderedUserPicker
-              options={userOptions}
-              value={creationApproverIds}
-              onChange={setCreationApproverIds}
-            />
-          </div>
-          <Text size="xs" c="dimmed">
-            {t("wagons.creationApproversHint")}
-          </Text>
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              {t("wagons.responsible")}{" "}
-              <Text span c="red">
-                *
-              </Text>
-            </Text>
-            <OrderedUserPicker
-              options={userOptions}
-              value={responsibleIds}
-              onChange={setResponsibleIds}
-            />
-          </div>
-          <Text size="xs" c="dimmed">
-            {t("wagons.responsibleHint")}
-          </Text>
-          <MultiSelect
-            label={t("wagons.executors")}
-            placeholder={
-              responsibleIds.length
-                ? t("wagons.executorsPlaceholder")
-                : t("wagons.executorsEmpty")
-            }
-            withAsterisk
-            data={executorOptions}
-            value={executorIds}
-            onChange={setExecutorIds}
-            disabled={responsibleIds.length === 0}
-            searchable
-            clearable
-            hidePickedOptions
-            maxDropdownHeight={240}
-          />
-          <Text size="xs" c="dimmed">
-            {t("wagons.executorsHint")}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setModalOpen(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button onClick={save} loading={saving}>
-              {t("common.create")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      {modalUsed && (
+        <WagonCreateModal
+          opened={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onCreated={load}
+          types={types}
+        />
+      )}
     </Page>
   );
 }

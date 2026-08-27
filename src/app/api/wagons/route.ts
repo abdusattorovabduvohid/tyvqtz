@@ -14,15 +14,22 @@ const createSchema = z.object({
   // «Ish boshlanish sanasi» / «Ish tugash sanasi» (ISO). Конец необязателен.
   plannedStart: z.string().optional().nullable(),
   plannedEnd: z.string().optional().nullable(),
-  // необязательно: выбранные этапы из справочника (динамический набор).
-  // если не передано — берём все.
-  stageIds: z.array(z.string()).optional(),
-  // ответственные за ВСЕ этапы вагона (одинаковые для всех этапов).
-  userIds: z.array(z.string()).min(1, "Выберите хотя бы одного ответственного"),
-  // кто из ответственных нажимает «Старт» / «Завершить» (подмножество userIds).
-  executorIds: z
-    .array(z.string())
-    .min(1, "Выберите, кто нажимает старт и завершение"),
+  // выбранные этапы из справочника (динамический набор)
+  stageIds: z.array(z.string()).min(1, "Выберите хотя бы один этап"),
+  // Ответственные СВОИ У КАЖДОЙ ПОЗИЦИИ: в бумаге у позиций разные цеха,
+  // поэтому №1 принимает мастер 15-цеха, а №4 — мастер 2-цеха. Форма считает
+  // эти списки по цехам позиции и присылает уже готовыми, в нужном порядке
+  // (сначала мастер цеха, потом те, кто участвует во всех позициях).
+  stageUsers: z
+    .array(
+      z.object({
+        stageId: z.string(),
+        userIds: z
+          .array(z.string())
+          .min(1, "У каждой позиции должен быть ответственный"),
+      })
+    )
+    .min(1, "Выберите ответственных"),
   // 1-я фаза: согласующие СОЗДАНИЕ вагона (по очереди).
   creationApproverIds: z
     .array(z.string())
@@ -172,9 +179,9 @@ export async function POST(req: Request) {
     if (!type) throw new ApiError(400, "Тип вагона не найден");
 
     // Снимок этапов из шаблона (справочника). Идут по порядку номеров.
-    // Если переданы stageIds — берём только выбранные (динамический набор).
+    // Берём только выбранные этапы (динамический набор).
     const templates = await prisma.stage.findMany({
-      where: data.stageIds?.length ? { id: { in: data.stageIds } } : undefined,
+      where: { id: { in: data.stageIds } },
       orderBy: { number: "asc" },
       include: { works: { orderBy: { number: "asc" } } },
     });
@@ -185,19 +192,27 @@ export async function POST(req: Request) {
       );
     }
 
-    // проверяем ответственных пользователей (этапы) и согласующих создание
-    const userIds = Array.from(new Set(data.userIds));
-    const approverIds = Array.from(new Set(data.creationApproverIds));
-    const executorIds = Array.from(new Set(data.executorIds));
-    const allIds = Array.from(new Set([...userIds, ...approverIds]));
-
-    // нажимать кнопки может только тот, кто назначен ответственным
-    if (executorIds.some((id) => !userIds.includes(id))) {
+    // Ответственные по позициям: id шаблона → упорядоченный список людей.
+    // Порядок из формы сохраняем как есть — по нему идёт очередь подписей.
+    const byStage = new Map<string, string[]>();
+    for (const row of data.stageUsers) {
+      byStage.set(row.stageId, Array.from(new Set(row.userIds)));
+    }
+    const orphan = templates.find((t) => !byStage.get(t.id)?.length);
+    if (orphan) {
       throw new ApiError(
         400,
-        "Нажимать старт и завершение могут только ответственные за этапы"
+        `У позиции №${orphan.number} нет ответственных — выберите их`
       );
     }
+
+    // проверяем ответственных пользователей (этапы) и согласующих создание
+    const userIds = Array.from(
+      new Set(templates.flatMap((t) => byStage.get(t.id) ?? []))
+    );
+    const approverIds = Array.from(new Set(data.creationApproverIds));
+    const allIds = Array.from(new Set([...userIds, ...approverIds]));
+
     const usersCount = await prisma.user.count({
       where: { id: { in: allIds } },
     });
@@ -206,8 +221,7 @@ export async function POST(req: Request) {
     }
 
     // Вагон создаётся в статусе "pending" — ждёт согласования создания (1-я фаза).
-    // Одинаковые ответственные (2-я фаза) назначаются на КАЖДЫЙ этап.
-    // Разрешение дают все ответственные, а кнопки жмут только executorIds.
+    // Ответственные (2-я фаза) у каждой позиции свои — см. byStage.
     const wagon = await prisma.wagon.create({
       data: {
         nameUz: data.nameUz,
@@ -244,10 +258,9 @@ export async function POST(req: Request) {
               })),
             },
             assignments: {
-              create: userIds.map((uid, idx) => ({
+              create: (byStage.get(tpl.id) ?? []).map((uid, idx) => ({
                 userId: uid,
                 order: idx,
-                canExecute: executorIds.includes(uid),
               })),
             },
           })),
