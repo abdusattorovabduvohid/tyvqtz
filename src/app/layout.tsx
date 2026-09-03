@@ -15,6 +15,7 @@ import { I18nProvider } from "@/components/I18nProvider";
 import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 import { PwaResumeGuard } from "@/components/PwaResumeGuard";
 import { getLang } from "@/lib/i18n/server";
+import { siteUrl } from "@/lib/site";
 
 // PWA: цвет системной строки в установленном приложении.
 //
@@ -35,23 +36,37 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-// Заголовок намеренно НЕ повторяет официальное имя завода: иначе в поиске
-// система конкурирует с rempassvagon.uz и её принимают за сайт завода.
-// По «tyvqtz» находится, по «Ташкентский вагонный завод» — не путается.
-// noindex не ставим: сотрудники должны находить систему поиском.
+// Раньше заголовок намеренно НЕ повторял имя завода, чтобы система не
+// конкурировала с rempassvagon.uz. Решение отменено владельцем: имя завода
+// теперь в заголовке — по запросу «Ташкентский вагонный завод» система тоже
+// должна находиться. От путаницы защищает не пустой заголовок, а блок
+// «Это внутренняя система завода» на самой странице входа со ссылкой на
+// официальный сайт (login.notice.* в translations.ts).
+//
+// Заголовок держим короче ~60 знаков — Google обрезает длиннее; полное
+// официальное имя вынесено в description, там места больше.
 export function generateMetadata(): Metadata {
   const lang = getLang();
   const ru = lang === "ru";
-  const title = ru ? "TYVQTZ — внутренняя система" : "TYVQTZ — ichki tizim";
+  const title = ru
+    ? "TYVQTZ — внутренняя система Ташкентского вагонного завода"
+    : "TYVQTZ — Toshkent vagon zavodi ichki tizimi";
   const description = ru
-    ? "Внутренняя система учёта сборки вагонов. Только для сотрудников завода. О заводе: rempassvagon.uz"
-    : "Vagon yig‘ishni hisobga olish ichki tizimi. Faqat zavod xodimlari uchun. Zavod haqida: rempassvagon.uz";
+    ? "Внутренняя система учёта сборки и ремонта вагонов АО «Ташкентский завод по строительству и ремонту пассажирских вагонов». Вход только для сотрудников. Официальный сайт завода: rempassvagon.uz"
+    : "«Toshkent yo‘lovchi vagonlarini qurish va ta’mirlash zavodi» AJ ichki tizimi: vagon yig‘ish va ta’mirlash hisobi. Kirish faqat xodimlar uchun. Zavod rasmiy sayti: rempassvagon.uz";
   return {
     // без metadataBase og:image уходит относительным путём и Telegram/соцсети
-    // его не подхватывают — нужен абсолютный URL
-    metadataBase: new URL("https://tyvqtzuz.vercel.app"),
+    // его не подхватывают — нужен абсолютный URL.
+    // Адрес берём из окружения: при переезде на .uz меняется только APP_URL.
+    metadataBase: new URL(siteUrl()),
     title,
     description,
+    // Явный canonical склеивает для Google старый vercel.app-адрес и новый
+    // домен в одну страницу — иначе они конкурируют друг с другом в выдаче.
+    alternates: { canonical: "/" },
+    keywords: ru
+      ? ["TYVQTZ", "Ташкентский вагонный завод", "пассажирские вагоны", "внутренняя система"]
+      : ["TYVQTZ", "Toshkent vagon zavodi", "yo‘lovchi vagonlari", "ichki tizim"],
     openGraph: {
       title,
       description,

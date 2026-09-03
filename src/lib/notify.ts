@@ -10,6 +10,7 @@
 import webpush from "web-push";
 import { prisma } from "./db";
 import { NOTIFICATIONS_ENABLED } from "./features";
+import { envSiteUrl } from "./site";
 
 export interface NotifyPayload {
   title: string;
@@ -42,11 +43,10 @@ function pushErrorDetail(err: unknown): string {
 }
 
 // Адрес сайта для ссылок в телеграме и в клике по пушу.
+// Здесь нужен именно «сырой» адрес: если он не настроен, fullLink ниже
+// сознательно не подставляет ссылку, вместо того чтобы вести на запасной домен.
 export function appUrl(): string {
-  const raw =
-    process.env.APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
-  return raw.replace(/\/+$/, "");
+  return envSiteUrl();
 }
 
 function fullLink(url?: string): string | null {
