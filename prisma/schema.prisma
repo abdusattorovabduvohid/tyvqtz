@@ -50,6 +50,16 @@ model User {
   // одноразовый код для команды /start <код> в боте
   telegramLinkCode String? @unique
 
+  // ── Контроль доступа ──
+  // Онлайн-статус. Обновляется не чаще раза в минуту (lib/presence.ts):
+  // писать в базу на каждый запрос — лишняя нагрузка на пул Supabase.
+  lastSeenAt   DateTime?
+  // Версия сессии, лежит внутри JWT. Кнопка «Выкинуть» увеличивает её —
+  // и все выданные этому человеку токены разом становятся негодными.
+  // Отдельная таблица сессий для этого не нужна.
+  tokenVersion Int       @default(0)
+
+  loginLogs              LoginLog[]
   pushSubscriptions      PushSubscription[]
   assignedWagonStages    WagonStageAssignment[]
   startedStages          WagonStage[]            @relation("StageStartedBy")
@@ -259,4 +269,58 @@ model PushSubscription {
   failCount Int      @default(0)
 
   @@index([userId])
+}
+
+// ──────────────────────────── Контроль доступа ────────────────────────────
+
+// Журнал входов. Пишем и успешные попытки, и неудачные — неудачные даже
+// важнее: по ним видно подбор пароля, и по ним же считается блокировка
+// (lib/login-guard.ts). Отдельной таблицы для блокировок поэтому не нужно.
+model LoginLog {
+  id String @id @default(cuid())
+
+  // null — такого логина в системе нет: кто-то подбирает чужую учётку
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // что именно ввели в поле логина: нужно и когда пользователя не существует
+  loginTried String
+  success    Boolean
+  // почему не пустили: no_user | bad_password | inactive | locked
+  reason     String?
+
+  ip        String?
+  userAgent String?
+  // разобранный userAgent, чтобы не парсить его заново при каждой отрисовке
+  device    String? // «Samsung SM-A536B»; у iPhone только «iPhone» — Apple скрывает
+  os        String?
+  browser   String?
+
+  // город по IP: приблизительно, на мобильном интернете часто врёт
+  ipCity    String?
+  ipCountry String?
+
+  // GPS — точно, но только если человек дал разрешение в браузере
+  gpsLat      Float?
+  gpsLng      Float?
+  gpsAccuracy Float? // радиус погрешности в метрах
+
+  createdAt DateTime @default(now())
+
+  // по этому индексу идёт и лента журнала, и подсчёт неудачных попыток
+  @@index([createdAt])
+  @@index([loginTried, createdAt])
+  @@index([userId, createdAt])
+}
+
+// Настройки, которые меняются на ходу, без деплоя.
+//
+// lib/features.ts остаётся для разделов, которые включает разработчик: там
+// значение зашито в код. Сюда попадает то, чем суперадмин должен управлять
+// сам, с телефона, и что обязано подействовать в ту же секунду.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+  updatedBy String? // id суперадмина, который переключил
 }

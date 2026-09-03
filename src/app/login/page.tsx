@@ -29,6 +29,32 @@ const BLOBS = [
   { color: "#4dabf7", size: 380, top: "-6%", left: "62%" },
 ];
 
+// Координаты для журнала входов.
+//
+// Браузер спрашивает разрешение у человека, и отказ — штатный исход: тогда
+// вход идёт как обычно, а в журнале останется только город по IP.
+// Ждём не дольше 6 секунд: вход не должен зависеть от того, поймал ли
+// телефон спутники в заводском цеху.
+async function currentPosition(): Promise<{
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracy?: number;
+}> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return {};
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          gpsLat: pos.coords.latitude,
+          gpsLng: pos.coords.longitude,
+          gpsAccuracy: pos.coords.accuracy,
+        }),
+      () => resolve({}),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60_000 }
+    );
+  });
+}
+
 function LoginContent() {
   const router = useRouter();
   const params = useSearchParams();
@@ -48,7 +74,7 @@ function LoginContent() {
     try {
       await apiFetch("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, ...(await currentPosition()) }),
       });
       notifications.show({
         color: "teal",

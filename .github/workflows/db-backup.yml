@@ -79,3 +79,23 @@ jobs:
           path: dump/*.sql.gz
           retention-days: 90
           if-no-files-found: error
+
+      # Чтобы дата последней копии была видна прямо в панели контроля и
+      # суперадмину не приходилось лезть сюда, в Actions, ради проверки.
+      # Секреты те же, что у крона: APP_URL и CRON_SECRET.
+      - name: Отметить копию в системе
+        # Шаг необязательный: не отметилось — копия всё равно снята и лежит
+        # в артефактах, ронять из-за этого воркфлоу незачем.
+        continue-on-error: true
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "APP_URL или CRON_SECRET не заданы — пропускаю отметку"
+            exit 0
+          fi
+          curl -fsS -X POST "${APP_URL%/}/api/backup/ping" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            --max-time 20

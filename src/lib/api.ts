@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, type SessionUser } from "./auth";
 import { can, type Action } from "./permissions";
+import { isSiteEnabled } from "./settings";
 
 export class ApiError extends Error {
   status: number;
@@ -11,9 +12,26 @@ export class ApiError extends Error {
 }
 
 // Требует авторизованного пользователя, иначе бросает ApiError(401).
+//
+// Здесь же общий рубильник: когда суперадмин выключает сайт, ни один
+// запрос обычного сотрудника не должен пройти — иначе уже открытая
+// вкладка продолжала бы работать как ни в чём не бывало. Сам суперадмин
+// исключён, иначе он запер бы себя вместе со всеми.
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) throw new ApiError(401, "Не авторизован");
+  if (!user.role.isSuperAdmin && !(await isSiteEnabled())) {
+    throw new ApiError(503, "Tizim vaqtincha o'chirilgan");
+  }
+  return user;
+}
+
+// Только суперадмин: панель контроля правами не настраивается, её видно
+// либо по флагу роли, либо никак.
+export async function requireSuperAdmin(): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) throw new ApiError(401, "Не авторизован");
+  if (!user.role.isSuperAdmin) throw new ApiError(403, "Недостаточно прав");
   return user;
 }
 

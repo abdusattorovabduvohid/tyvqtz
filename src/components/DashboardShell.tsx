@@ -19,6 +19,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconUsers,
   IconShieldHalf,
+  IconShieldLock,
   IconTrain,
   IconListNumbers,
   IconBox,
@@ -47,6 +48,7 @@ const ICONS: Record<string, React.ReactNode> = {
   "wagon-types": <IconTrain size={20} />,
   stages: <IconListNumbers size={20} />,
   wagons: <IconBox size={20} />,
+  control: <IconShieldLock size={20} />,
 };
 
 export interface NavItem {
@@ -74,6 +76,7 @@ export function DashboardShell({
     if (key === "dashboard") return t("shell.home");
     if (key === "my-stages") return t("shell.myStages");
     if (key === "notifications") return t("notif.title");
+    if (key === "control") return t("control.title");
     return t(`sections.${key}`);
   };
 
