@@ -28,7 +28,12 @@ jobs:
     steps:
       - name: Снять дамп
         env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # Читаем секрет в промежуточную переменную и чистим его ниже.
+          # При вставке в веб-форму GitHub в конец значения попадает перевод
+          # строки, и pg_dump падает с «invalid sslmode value: require\n».
+          # Чиним это здесь, а не просим человека переклеивать секрет:
+          # второй раз наступать на те же грабли незачем.
+          RAW_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         # pg_dump отказывается работать, если его версия старше версии
         # сервера. Системный клиент раннера отстаёт и ломается после
         # очередного апгрейда Postgres на стороне Supabase, поэтому берём
@@ -36,9 +41,30 @@ jobs:
         # «server version mismatch» — поднять тег postgres:NN.
         run: |
           set -euo pipefail
+
+          # Пробелов в строке подключения быть не может, поэтому смело
+          # вычищаем любые — вместе с переводом строки из формы.
+          DB_URL="$(printf '%s' "$RAW_DB_URL" | tr -d '[:space:]')"
+          # И кавычки, если значение скопировали из .env вместе с ними.
+          DB_URL="${DB_URL%\"}"
+          DB_URL="${DB_URL#\"}"
+
+          # Очищенное значение отличается от секрета, поэтому автоматическая
+          # маскировка GitHub на него не действует — маскируем вручную.
+          echo "::add-mask::$DB_URL"
+
+          case "$DB_URL" in
+            postgres://*|postgresql://*) ;;
+            "") echo "::error::Секрет SUPABASE_DB_URL пуст"; exit 1 ;;
+            *)  echo "::error::SUPABASE_DB_URL не похож на строку подключения"; exit 1 ;;
+          esac
+
           mkdir -p dump
-          docker run --rm -e DATABASE_URL -v "$PWD/dump:/dump" postgres:17 \
-            sh -c 'pg_dump "$DATABASE_URL" --no-owner --no-privileges -f /dump/backup.sql'
+          # Передаём переменную по имени, а не значением: так строка с паролем
+          # не попадает в список процессов раннера.
+          export DB_URL
+          docker run --rm -e DB_URL -v "$PWD/dump:/dump" postgres:17 \
+            sh -c 'pg_dump "$DB_URL" --no-owner --no-privileges -f /dump/backup.sql'
           gzip -9 dump/backup.sql
           mv dump/backup.sql.gz "dump/tyvqtz-$(date +%F).sql.gz"
           ls -lh dump
