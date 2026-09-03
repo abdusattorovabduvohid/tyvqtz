@@ -1,0 +1,55 @@
+# Еженедельная резервная копия базы.
+#
+# На бесплатном тарифе Supabase автоматических бэкапов НЕТ вообще: если данные
+# потеряются (неудачный `prisma db push`, ошибочный DELETE), восстановить их
+# неоткуда. Этот воркфлоу снимает дамп и кладёт его в артефакты Actions.
+#
+# Что нужно один раз настроить руками:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   Имя:      SUPABASE_DB_URL
+#   Значение: строка POSTGRES_URL_NON_POOLING из .env
+#
+# Важно: именно NON_POOLING. Обычный адрес идёт через pgbouncer, а он не
+# поддерживает служебные запросы pg_dump — дамп получится битым.
+
+name: Резервная копия базы
+
+on:
+  schedule:
+    # Каждое воскресенье в 03:00 UTC — это 08:00 по Ташкенту.
+    - cron: "0 3 * * 0"
+  # Ручной запуск со вкладки Actions: нужен, чтобы снять дамп ПЕРЕД
+  # каждым `prisma db push` — самой опасной операцией в проекте.
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Снять дамп
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        # pg_dump отказывается работать, если его версия старше версии
+        # сервера. Системный клиент раннера отстаёт и ломается после
+        # очередного апгрейда Postgres на стороне Supabase, поэтому берём
+        # официальный образ с зафиксированной версией. Если появится ошибка
+        # «server version mismatch» — поднять тег postgres:NN.
+        run: |
+          set -euo pipefail
+          mkdir -p dump
+          docker run --rm -e DATABASE_URL -v "$PWD/dump:/dump" postgres:17 \
+            sh -c 'pg_dump "$DATABASE_URL" --no-owner --no-privileges -f /dump/backup.sql'
+          gzip -9 dump/backup.sql
+          mv dump/backup.sql.gz "dump/tyvqtz-$(date +%F).sql.gz"
+          ls -lh dump
+
+      # Дамп содержит персональные данные сотрудников, поэтому он идёт в
+      # артефакты, а НЕ в репозиторий: в гите он остался бы навсегда и попал
+      # бы к каждому, у кого есть доступ к коду.
+      - name: Сохранить артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: dump/*.sql.gz
+          retention-days: 90
+          if-no-files-found: error
