@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isSiteEnabled } from "@/lib/settings";
 import { getLang } from "@/lib/i18n/server";
 import { Logo } from "@/components/Logo";
+import { OfflineWatcher } from "@/components/OfflineWatcher";
 
 // Заглушка на время, пока суперадмин держит систему выключенной.
 //
@@ -31,6 +32,7 @@ export default async function OfflinePage() {
           "radial-gradient(1200px 800px at 20% 10%, #16346b 0%, #0d1a38 45%, #081124 100%)",
       }}
     >
+      <OfflineWatcher />
       <Box
         style={{
           width: "100%",

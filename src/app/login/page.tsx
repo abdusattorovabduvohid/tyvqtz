@@ -72,10 +72,20 @@ function LoginContent() {
   async function handleSubmit(values: typeof form.values) {
     setLoading(true);
     try {
-      await apiFetch("/api/auth/login", {
+      const res = await apiFetch<{ siteOff?: boolean }>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ ...values, ...(await currentPosition()) }),
       });
+
+      // Систему выключил суперадмин. Пароль был верный, сессия выдана, но
+      // работать пока не с чем — ведём на заглушку с объяснением, а не
+      // приветствуем и не бросаем в дашборд, откуда всё равно выкинет.
+      if (res?.siteOff) {
+        router.replace("/offline");
+        router.refresh();
+        return;
+      }
+
       notifications.show({
         color: "teal",
         title: t("login.welcome"),

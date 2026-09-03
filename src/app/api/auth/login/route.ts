@@ -112,15 +112,20 @@ export async function POST(req: Request) {
     }
 
     // ── Сайт выключен суперадмином ──
-    // Проверяем ПОСЛЕ пароля: иначе по разному ответу видно, существует
-    // учётка или нет. Сам суперадмин заходит всегда — иначе, выключив
-    // сайт, он запер бы и себя.
-    if (!user.role.isSuperAdmin && !(await isSiteEnabled())) {
-      await log(login, false, "site_off", info, gps, user.id);
-      throw new ApiError(503, "Tizim vaqtincha o'chirilgan. Keyinroq urinib ko'ring.");
-    }
+    //
+    // Пароль верный, значит человек — тот, за кого себя выдаёт, и сессию мы
+    // ему выдаём. Дальше его встретит страница-заглушка: она объясняет, что
+    // идут технические работы, вместо красной ошибки «не удалось войти».
+    // Делать что-либо он всё равно не сможет — requireUser и layout
+    // дашборда закрыты. Зато когда систему включат обратно, повторно
+    // логиниться не придётся.
+    //
+    // Проверку делаем ПОСЛЕ пароля намеренно: иначе по разнице ответов
+    // можно перебрать список существующих логинов. Суперадмина не
+    // ограничиваем — иначе, выключив сайт, он запер бы и себя.
+    const siteOff = !user.role.isSuperAdmin && !(await isSiteEnabled());
 
-    await log(login, true, null, info, gps, user.id);
+    await log(login, true, siteOff ? "site_off" : null, info, gps, user.id);
 
     const kind = suspicionOf(info);
     if (kind) {
@@ -132,7 +137,7 @@ export async function POST(req: Request) {
     }
 
     await setSessionCookie(user.id, user.tokenVersion);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, siteOff });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
