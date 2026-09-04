@@ -44,7 +44,11 @@ export default async function OfflinePage() {
           boxShadow: "0 30px 70px rgba(3,12,32,0.5)",
         }}
       >
-        <Logo height={84} />
+        {/* Логотип рендерится как display:block, поэтому text-align его не
+            центрирует — нужна отдельная обёртка. */}
+        <Box style={{ display: "flex", justifyContent: "center" }}>
+          <Logo height={84} />
+        </Box>
         <Title order={4} mt="lg" style={{ color: "#122c5c", lineHeight: 1.3 }}>
           {ru ? "Ведутся технические работы" : "Texnik ishlar olib borilmoqda"}
         </Title>
