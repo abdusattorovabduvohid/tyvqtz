@@ -88,14 +88,32 @@ jobs:
         # в артефактах, ронять из-за этого воркфлоу незачем.
         continue-on-error: true
         env:
-          APP_URL: ${{ secrets.APP_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # Как и строку подключения выше, чистим от перевода строки: при
+          # вставке в форму секретов GitHub он попадает в конец значения, и
+          # заголовок Authorization уезжает с «\n» — сервер отвечает 401.
+          RAW_APP_URL: ${{ secrets.APP_URL }}
+          RAW_CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
-          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+
+          # Ни в адресе, ни в секрете пробелов быть не может.
+          APP_URL="$(printf '%s' "$RAW_APP_URL" | tr -d '[:space:]')"
+          CRON_SECRET="$(printf '%s' "$RAW_CRON_SECRET" | tr -d '[:space:]')"
+          echo "::add-mask::$CRON_SECRET"
+
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
             echo "APP_URL или CRON_SECRET не заданы — пропускаю отметку"
             exit 0
           fi
-          curl -fsS -X POST "${APP_URL%/}/api/backup/ping" \
+
+          # Без -f, чтобы код ответа было видно в логе: молчаливое падение
+          # здесь уже один раз стоило отладки.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST "${APP_URL%/}/api/backup/ping" \
             -H "Authorization: Bearer $CRON_SECRET" \
-            --max-time 20
+            --max-time 20)
+          echo "Ответ сервера: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::Отметка не прошла (HTTP $code). Копия снята и лежит в артефактах."
+            exit 1
+          fi
