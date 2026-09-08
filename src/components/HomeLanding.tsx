@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { Box, Button, Card, Container, Grid, Group, Stack, Text, Title } from "@mantine/core";
+// SimpleGrid, а не Grid: у Grid колонка берётся через Grid.Col, а обращение
+// к вложенному компоненту серверный рендер Next не переваривает —
+// «Could not find the module … #Grid#Col in the React Client Manifest», 500
+// на главной. Здесь колонки всё равно одинаковые, SimpleGrid подходит лучше.
+import { Box, Button, Card, Container, Group, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import {
   IconClipboardCheck,
   IconExternalLink,
@@ -145,29 +149,28 @@ export function HomeLanding({ ru }: { ru: boolean }) {
           </Stack>
 
           {/* ── Что делает система ── */}
-          <Grid gutter="md">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
             {features.map((f) => (
-              <Grid.Col key={f.title} span={{ base: 12, sm: 4 }}>
-                <Card
-                  radius="lg"
-                  padding="lg"
-                  h="100%"
-                  style={{
-                    background: "rgba(255,255,255,0.055)",
-                    border: "1px solid rgba(255,255,255,0.11)",
-                  }}
-                >
-                  <Box style={{ color: "#8ab4f8" }}>{f.icon}</Box>
-                  <Text fw={700} c="#fff" mt="sm" mb={6}>
-                    {f.title}
-                  </Text>
-                  <Text size="sm" style={{ color: "#a9bcdb", lineHeight: 1.6 }}>
-                    {f.text}
-                  </Text>
-                </Card>
-              </Grid.Col>
+              <Card
+                key={f.title}
+                radius="lg"
+                padding="lg"
+                h="100%"
+                style={{
+                  background: "rgba(255,255,255,0.055)",
+                  border: "1px solid rgba(255,255,255,0.11)",
+                }}
+              >
+                <Box style={{ color: "#8ab4f8" }}>{f.icon}</Box>
+                <Text fw={700} c="#fff" mt="sm" mb={6}>
+                  {f.title}
+                </Text>
+                <Text size="sm" style={{ color: "#a9bcdb", lineHeight: 1.6 }}>
+                  {f.text}
+                </Text>
+              </Card>
             ))}
-          </Grid>
+          </SimpleGrid>
 
           {/* ── Кому доступ ── */}
           <Card
