@@ -20,6 +20,7 @@ import { apiFetch, showError } from "@/lib/client";
 import { useI18n } from "@/components/I18nProvider";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Logo } from "@/components/Logo";
+import { LoginAbout } from "@/components/LoginAbout";
 
 // цветные пятна фона (aurora)
 const BLOBS = [
@@ -274,8 +275,14 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={null}>
-      <LoginContent />
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <LoginContent />
+      </Suspense>
+      {/* Описание системы ниже первого экрана. Стоит соседним блоком, а не
+          внутри экрана входа: тот центрирует карточку по высоте окна, и
+          любой текст рядом сдвинул бы форму с середины. */}
+      <LoginAbout />
+    </>
   );
 }

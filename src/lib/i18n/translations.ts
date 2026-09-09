@@ -499,6 +499,25 @@ const ru: Dict = {
   "dur.s": "сек",
   "dur.zero": "0 сек",
 
+  // описание системы под формой входа (нужно поиску, см. LoginAbout)
+  "about.eyebrow": "О системе",
+  "about.title":
+    "Внутренняя система учёта сборки и ремонта пассажирских вагонов",
+  "about.lead":
+    "TYVQTZ ведёт работу завода по этапам: план по дням, нормативы времени, приёмка работ и ответственные за каждую позицию. Всё, что раньше держалось на бумажном плане и телефонных звонках.",
+  "about.stages.title": "Этапы сборки",
+  "about.stages.text":
+    "Позиции из бумажного плана — по дням, с нормативом времени, бригадой и цехом. Видно, на каком этапе вагон стоит прямо сейчас.",
+  "about.signoff.title": "Приёмка по дням",
+  "about.signoff.text":
+    "Ответственные подписывают каждый рабочий день позиции. День принят, когда расписались все назначенные, а не один человек за всех.",
+  "about.people.title": "Люди и доступы",
+  "about.people.text":
+    "Роли с точной настройкой прав: кто что видит и кто что может менять. Мастер, начальник цеха и администрация работают в разных объёмах.",
+  "about.access.title": "Кому открыт доступ",
+  "about.access.text":
+    "Только сотрудникам завода: мастерам, начальникам цехов, приёмщикам и администрации. Регистрация закрыта — логин и пароль выдаёт администратор системы на заводе. Если учётной записи нет, обратитесь к начальнику своего цеха.",
+
   // панель контроля (только суперадмин)
   "sections.control": "Контроль",
   "control.title": "Панель контроля",
@@ -1022,6 +1041,25 @@ const uz: Dict = {
   "dur.m": "daqiqa",
   "dur.s": "soniya",
   "dur.zero": "0 soniya",
+
+  // tizim haqida, kirish formasi ostida (qidiruv uchun, LoginAbout ga qarang)
+  "about.eyebrow": "Tizim haqida",
+  "about.title":
+    "Yo‘lovchi vagonlarini yig‘ish va ta’mirlash hisobining ichki tizimi",
+  "about.lead":
+    "TYVQTZ zavod ishini bosqichlar bo‘yicha yuritadi: kunlik reja, vaqt normalari, ishlarni qabul qilish va har bir pozitsiya uchun mas’ullar. Ilgari qog‘oz reja va telefon qo‘ng‘iroqlariga tayangan hamma narsa.",
+  "about.stages.title": "Yig‘ish bosqichlari",
+  "about.stages.text":
+    "Qog‘oz rejadagi pozitsiyalar — kunlar bo‘yicha, vaqt normasi, brigada va sex bilan. Vagon hozir qaysi bosqichda turgani ko‘rinib turadi.",
+  "about.signoff.title": "Kunlik qabul",
+  "about.signoff.text":
+    "Mas’ullar pozitsiyaning har bir ish kunini imzolaydi. Kun barcha tayinlanganlar imzolagach qabul qilinadi, bitta odam hamma uchun emas.",
+  "about.people.title": "Xodimlar va ruxsatlar",
+  "about.people.text":
+    "Rollar aniq sozlanadi: kim nimani ko‘radi, kim nimani o‘zgartira oladi. Usta, sex boshlig‘i va ma’muriyat turli hajmda ishlaydi.",
+  "about.access.title": "Kimga ruxsat beriladi",
+  "about.access.text":
+    "Faqat zavod xodimlariga: ustalar, sex boshliqlari, qabul qiluvchilar va ma’muriyatga. Ro‘yxatdan o‘tish yopiq — login va parolni zavoddagi tizim administratori beradi. Hisob yozuvingiz bo‘lmasa, sexingiz boshlig‘iga murojaat qiling.",
 
   // nazorat paneli (faqat superadmin)
   "sections.control": "Nazorat",
