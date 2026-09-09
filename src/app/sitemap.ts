@@ -3,13 +3,21 @@ import { siteUrl } from "@/lib/site";
 
 // Next отдаёт это как /sitemap.xml.
 //
-// В карте только публичные адреса. Остальные страницы за логином —
-// добавлять их бессмысленно: робот получит редирект на /login.
+// В карте ровно один адрес — /login. Это единственная страница сайта,
+// которая отдаёт содержимое: «/» редиректит на неё, а всё остальное
+// закрыто авторизацией.
+//
+// Раньше здесь стоял и «/». Это была ошибка: в карту сайта кладут адреса,
+// которые отвечают 200, а «/» отвечает редиректом. Поисковик помечает
+// такие строки как «страница с переадресацией» и тратит на них обход
+// впустую — а в отчётах это выглядит как ошибка карты.
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = siteUrl();
-  const now = new Date();
   return [
-    { url: `${base}/`, lastModified: now, changeFrequency: "monthly", priority: 1 },
-    { url: `${base}/login`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    {
+      url: `${siteUrl()}/login`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 1,
+    },
   ];
 }
