@@ -4,6 +4,7 @@ import { handleError, requireSuperAdmin } from "@/lib/api";
 import { presenceOf, ONLINE_MIN, IDLE_MIN } from "@/lib/presence";
 import { getSetting, isSiteEnabled, LAST_BACKUP_AT } from "@/lib/settings";
 import { NOTIFICATIONS_ENABLED } from "@/lib/features";
+import { telegramWebhookHealth } from "@/lib/notify";
 
 // Всё, что показывает панель контроля, одним запросом: состояние сайта,
 // счётчики, кто в сети и последние входы. Отдельные эндпоинты на каждую
@@ -62,7 +63,7 @@ export async function GET() {
     // и кто из сотрудников не подключил телеграм — такой человек ни одного
     // уведомления не получит, и знать об этом надо заранее, а не по факту
     // сорванного срока.
-    const [queued, gaveUp, noTelegram] = NOTIFICATIONS_ENABLED
+    const [queued, gaveUp, noTelegram, webhook] = NOTIFICATIONS_ENABLED
       ? await Promise.all([
           prisma.notificationOutbox.count({
             where: { sentAt: null, nextTryAt: { not: null } },
@@ -75,8 +76,14 @@ export async function GET() {
             orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
             select: { id: true, firstName: true, lastName: true, seh: true },
           }),
+          telegramWebhookHealth(),
         ])
-      : [0, 0, [] as { id: string; firstName: string; lastName: string; seh: string | null }[]];
+      : [
+          0,
+          0,
+          [] as { id: string; firstName: string; lastName: string; seh: string | null }[],
+          null,
+        ];
 
     const people = users.map((u) => ({
       id: u.id,
@@ -110,6 +117,7 @@ export async function GET() {
           name: `${u.lastName} ${u.firstName}`,
           seh: u.seh,
         })),
+        webhook,
       },
       logs: logs.map((l) => ({
         ...l,

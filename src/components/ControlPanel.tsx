@@ -76,6 +76,15 @@ interface ControlData {
     gaveUp: number;
     // сотрудники без телеграма: до них уведомления не дойдут
     noTelegram: { id: string; name: string; seh: string | null }[];
+    // состояние вебхука бота: без него не работает привязка телеграма
+    webhook: {
+      ok: boolean;
+      url: string | null;
+      expected: string;
+      pending: number;
+      lastError: string | null;
+      lastErrorAt: string | null;
+    } | null;
   };
 }
 
@@ -297,6 +306,31 @@ export function ControlPanel({ meId }: { meId: string }) {
                   })}
                   {": "}
                   {data.notify.noTelegram.map((p) => p.name).join(", ")}
+                </Text>
+              )}
+              {/* Вебхук ломается молча: телеграм копит апдейты, а люди не
+                  могут привязать чат. Показываем и когда всё хорошо —
+                  иначе не понять, следит за ним кто-нибудь или нет. */}
+              {data.notify.webhook && (
+                <Text
+                  size="xs"
+                  c={data.notify.webhook.ok ? "dimmed" : "red.7"}
+                  lh={1.4}
+                  mt={4}
+                >
+                  {data.notify.webhook.ok
+                    ? t("control.webhookOk")
+                    : t("control.webhookBad", {
+                        err:
+                          data.notify.webhook.lastError ??
+                          (data.notify.webhook.url
+                            ? data.notify.webhook.url
+                            : t("control.webhookNone")),
+                      })}
+                  {data.notify.webhook.pending > 0 &&
+                    ` · ${t("control.webhookPending", {
+                      n: data.notify.webhook.pending,
+                    })}`}
                 </Text>
               )}
             </Box>

@@ -553,6 +553,10 @@ const ru: Dict = {
   "control.notifyQueue":
     "В очереди на повтор: {queued} · не доставлено: {gaveUp}",
   "control.notifyNoTelegram": "Телеграм не подключён у {n} чел.",
+  "control.webhookOk": "Вебхук телеграма: в порядке",
+  "control.webhookBad": "Вебхук телеграма не работает: {err}",
+  "control.webhookNone": "адрес не задан",
+  "control.webhookPending": "застряло сообщений: {n}",
   "control.who": "Кто в сети",
   "control.onlineMeans": "«в сети» = активность за {n} мин",
   "control.online": "В сети",
@@ -1110,6 +1114,10 @@ const uz: Dict = {
   "control.notifyQueue":
     "Qayta yuborish navbatida: {queued} · yetkazilmadi: {gaveUp}",
   "control.notifyNoTelegram": "{n} kishida telegram ulanmagan",
+  "control.webhookOk": "Telegram webhook: joyida",
+  "control.webhookBad": "Telegram webhook ishlamayapti: {err}",
+  "control.webhookNone": "manzil qo‘yilmagan",
+  "control.webhookPending": "qotib qolgan xabar: {n}",
   "control.who": "Kim tizimda",
   "control.onlineMeans": "«tizimda» = {n} daqiqada faol edi",
   "control.online": "Tizimda",

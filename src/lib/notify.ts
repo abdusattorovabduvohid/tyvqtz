@@ -288,6 +288,95 @@ export async function telegramSend(
   }
 }
 
+// ── Здоровье вебхука ──────────────────────────────────────────────────────
+//
+// Вебхук нужен только для входящих команд — то есть для /start, которым
+// сотрудник привязывает свой чат. Ломается он молча: телеграм копит апдейты,
+// а люди просто не могут подключиться. Ровно так и было, пока APP_URL вёл на
+// домен с редиректом: телеграм за редиректом не идёт и получал 308.
+//
+// Поэтому состояние вебхука видно в панели контроля — чтобы не вспоминать
+// про скрипт setup-telegram.mjs раз в полгода.
+
+export interface WebhookHealth {
+  ok: boolean;
+  url: string | null;
+  // куда вебхук должен указывать по нынешнему APP_URL
+  expected: string;
+  // сколько сообщений телеграм не смог нам отдать
+  pending: number;
+  lastError: string | null;
+  lastErrorAt: string | null;
+}
+
+// Панель сама обновляется раз в 30 секунд — дёргать телеграм так часто
+// незачем, состояние вебхука меняется раз в год.
+const WEBHOOK_TTL_MS = 5 * 60_000;
+// Старая ошибка после починки висит в getWebhookInfo ещё какое-то время:
+// тревожимся только из-за свежей.
+const WEBHOOK_ERROR_FRESH_MS = 24 * 60 * 60_000;
+
+let webhookCache: { at: number; data: WebhookHealth } | null = null;
+
+export async function telegramWebhookHealth(): Promise<WebhookHealth | null> {
+  if (!telegramEnabled()) return null;
+  if (webhookCache && Date.now() - webhookCache.at < WEBHOOK_TTL_MS) {
+    return webhookCache.data;
+  }
+
+  const base = appUrl();
+  const expected = base ? `${base}/api/telegram/webhook` : "";
+  let data: WebhookHealth = {
+    ok: false,
+    url: null,
+    expected,
+    pending: 0,
+    lastError: "getWebhookInfo failed",
+    lastErrorAt: null,
+  };
+
+  try {
+    const r = await fetch(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    const j = (await r.json()) as {
+      ok?: boolean;
+      result?: {
+        url?: string;
+        pending_update_count?: number;
+        last_error_message?: string;
+        last_error_date?: number;
+      };
+    };
+    const info = j?.result;
+    if (j?.ok && info) {
+      const url = info.url || null;
+      const errAt = info.last_error_date
+        ? new Date(info.last_error_date * 1000)
+        : null;
+      const freshError =
+        Boolean(info.last_error_message) &&
+        Boolean(errAt) &&
+        Date.now() - (errAt as Date).getTime() < WEBHOOK_ERROR_FRESH_MS;
+      data = {
+        url,
+        expected,
+        pending: Number(info.pending_update_count) || 0,
+        lastError: info.last_error_message || null,
+        lastErrorAt: errAt ? errAt.toISOString() : null,
+        // адрес задан, ведёт на наш сайт и свежих отказов нет
+        ok: Boolean(url) && (!expected || url === expected) && !freshError,
+      };
+    }
+  } catch (err) {
+    console.error("getWebhookInfo", err);
+  }
+
+  webhookCache = { at: Date.now(), data };
+  return data;
+}
+
 function telegramText(payload: NotifyPayload): string {
   return `<b>${esc(payload.title)}</b>\n${esc(payload.body)}`;
 }
