@@ -31,6 +31,10 @@ export interface UserRow {
   passwordPlain?: string | null;
   isActive: boolean;
   role: { id: string; nameRu: string; nameUz: string | null };
+  // подключил ли человек телеграм и сколько устройств ловят web push
+  telegramLinked?: boolean;
+  telegramUsername?: string | null;
+  pushDevices?: number;
 }
 
 interface Props {

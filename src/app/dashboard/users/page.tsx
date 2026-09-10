@@ -23,6 +23,8 @@ import {
   IconPencil,
   IconTrash,
   IconSearch,
+  IconBrandTelegram,
+  IconDeviceMobile,
 } from "@tabler/icons-react";
 import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
@@ -30,6 +32,7 @@ import { useCan } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
 import { revealDelay } from "@/lib/anim";
+import { NOTIFICATIONS_ENABLED } from "@/lib/features";
 import { UserFormModal, type UserRow } from "@/components/UserFormModal";
 
 
@@ -96,6 +99,11 @@ export default function UsersPage() {
     });
   }
 
+  // Считаем по активным: отключённому сотруднику телеграм и не нужен.
+  const noTelegram = users.filter(
+    (u) => u.isActive && !u.telegramLinked
+  ).length;
+
   const filtered = users.filter((u) =>
     [u.firstName, u.lastName, u.middleName, u.login, u.role.nameRu, u.role.nameUz]
       .filter(Boolean)
@@ -127,9 +135,16 @@ export default function UsersPage() {
             onChange={(e) => setSearch(e.currentTarget.value)}
             w={280}
           />
-          <Text size="sm" c="dimmed">
-            {t("common.total")}: {filtered.length}
-          </Text>
+          <Group gap="sm">
+            {NOTIFICATIONS_ENABLED && noTelegram > 0 && (
+              <Badge variant="light" color="red">
+                {t("users.tgMissing", { n: noTelegram })}
+              </Badge>
+            )}
+            <Text size="sm" c="dimmed">
+              {t("common.total")}: {filtered.length}
+            </Text>
+          </Group>
         </Group>
 
         {loading ? (
@@ -148,6 +163,9 @@ export default function UsersPage() {
                   <Table.Th>{t("users.col.user")}</Table.Th>
                   <Table.Th>{t("users.col.login")}</Table.Th>
                   <Table.Th>{t("users.col.role")}</Table.Th>
+                  {NOTIFICATIONS_ENABLED && (
+                    <Table.Th>{t("users.col.notify")}</Table.Th>
+                  )}
                   <Table.Th>{t("users.col.status")}</Table.Th>
                   <Table.Th w={60}></Table.Th>
                 </Table.Tr>
@@ -196,6 +214,39 @@ export default function UsersPage() {
                         {pickName(u.role, lang)}
                       </Badge>
                     </Table.Td>
+                    {/* Кто подключил телеграм. Нужно на разборах: сотрудник
+                        говорит «мне не сообщили», а видно, что он сам не
+                        подключился — уведомлению просто некуда было прийти. */}
+                    {NOTIFICATIONS_ENABLED && (
+                      <Table.Td>
+                        <Group gap={6} wrap="nowrap">
+                          {u.telegramLinked ? (
+                            <Badge
+                              variant="light"
+                              color="teal"
+                              leftSection={<IconBrandTelegram size={12} />}
+                            >
+                              {u.telegramUsername
+                                ? `@${u.telegramUsername}`
+                                : t("users.tgOn")}
+                            </Badge>
+                          ) : (
+                            <Badge variant="light" color="red">
+                              {t("users.tgOff")}
+                            </Badge>
+                          )}
+                          {(u.pushDevices ?? 0) > 0 && (
+                            <Badge
+                              variant="light"
+                              color="gray"
+                              leftSection={<IconDeviceMobile size={12} />}
+                            >
+                              {u.pushDevices}
+                            </Badge>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    )}
                     <Table.Td>
                       {u.isActive ? (
                         <Badge variant="dot" color="teal">
