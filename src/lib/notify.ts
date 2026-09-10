@@ -55,6 +55,59 @@ function fullLink(url?: string): string | null {
   return base ? `${base}${url}` : null;
 }
 
+// ─────────────────────── Очередь недоставленного ───────────────────────
+//
+// Отправляем сразу, в том же запросе — так уведомление приходит через
+// секунду, а не через час. Но заводской интернет рвётся, а телеграм иногда
+// не отвечает за 7 секунд: раньше такое уведомление просто пропадало.
+// Теперь неудачная отправка ложится в NotificationOutbox, а /api/cron/retry
+// добивает её с нарастающей паузой.
+
+// После стольких попыток сдаёмся: строка остаётся в таблице с lastError,
+// её видно в панели контроля.
+const MAX_ATTEMPTS = 8;
+
+// Паузы между попытками. Первая — почти сразу (сеть моргнула), дальше реже,
+// чтобы упавший на полдня телеграм не жёг лимиты Vercel.
+const BACKOFF_MIN = [1, 5, 15, 60, 180, 360, 720, 1440];
+
+function nextTry(attempts: number): Date {
+  const min = BACKOFF_MIN[Math.min(attempts, BACKOFF_MIN.length - 1)];
+  return new Date(Date.now() + min * 60_000);
+}
+
+type Channel = "telegram" | "push" | "group";
+
+// Кладём недоставленное в очередь. Само по себе никогда не бросает:
+// если и запись в очередь не удалась — уведомление всё равно не должно
+// уронить создание вагона.
+async function enqueue(
+  channel: Channel,
+  target: string | null,
+  userId: string | null,
+  payload: NotifyPayload,
+  error: string
+) {
+  try {
+    await prisma.notificationOutbox.create({
+      data: {
+        channel,
+        target,
+        userId,
+        title: payload.title,
+        body: payload.body,
+        url: payload.url ?? null,
+        tag: payload.tag ?? null,
+        attempts: 1,
+        lastError: error.slice(0, 500),
+        nextTryAt: nextTry(1),
+      },
+    });
+  } catch (err) {
+    console.error("outbox enqueue", err);
+  }
+}
+
 // ─────────────────────────── Web Push ───────────────────────────
 
 // Сколько отказов подряд терпим, прежде чем выбросить подписку.
@@ -84,6 +137,39 @@ export function pushEnabled(): boolean {
   return initVapid();
 }
 
+function pushBody(payload: NotifyPayload): string {
+  return JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    url: payload.url ?? "/dashboard",
+    tag: payload.tag,
+  });
+}
+
+// «dead» — подписки больше нет, повторять бессмысленно;
+// «retry» — не доставили, но шанс есть: кладём в очередь.
+type PushOutcome = "ok" | "dead" | "retry";
+
+async function pushOne(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  body: string
+): Promise<{ outcome: PushOutcome; code?: number; detail: string }> {
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      body,
+      { TTL: 60 * 60 * 12 }
+    );
+    return { outcome: "ok", detail: "" };
+  } catch (err) {
+    const code = pushStatusCode(err);
+    const detail = pushErrorDetail(err);
+    // подписка мертва: браузер удалён, кеш очищен, PWA снесена
+    if (code === 404 || code === 410) return { outcome: "dead", code, detail };
+    return { outcome: "retry", code, detail };
+  }
+}
+
 async function sendWebPush(userIds: string[], payload: NotifyPayload) {
   if (!pushEnabled() || userIds.length === 0) return;
 
@@ -92,12 +178,7 @@ async function sendWebPush(userIds: string[], payload: NotifyPayload) {
   });
   if (subs.length === 0) return;
 
-  const body = JSON.stringify({
-    title: payload.title,
-    body: payload.body,
-    url: payload.url ?? "/dashboard",
-    tag: payload.tag,
-  });
+  const body = pushBody(payload);
 
   const dead: string[] = [];
   const failed: string[] = [];
@@ -105,30 +186,26 @@ async function sendWebPush(userIds: string[], payload: NotifyPayload) {
 
   await Promise.allSettled(
     subs.map(async (s) => {
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: s.endpoint,
-            keys: { p256dh: s.p256dh, auth: s.auth },
-          },
-          body,
-          { TTL: 60 * 60 * 12 }
-        );
+      const r = await pushOne(s, body);
+      if (r.outcome === "ok") {
         alive.push(s.id);
-      } catch (err) {
-        const code = pushStatusCode(err);
-        if (code === 404 || code === 410) {
-          // подписка мертва: браузер удалён, кеш очищен, PWA снесена
-          dead.push(s.id);
-        } else if (code === 401 || code === 403) {
-          // push-сервис не принял нашу подпись: чаще всего сменился (или не
-          // подхватился) VAPID-ключ. Сразу не рубим — считаем отказы.
-          failed.push(s.id);
-          console.error("push rejected (VAPID?)", code, pushErrorDetail(err));
-        } else {
-          console.error("push error", code, pushErrorDetail(err));
-        }
+        return;
       }
+      if (r.outcome === "dead") {
+        dead.push(s.id);
+        return;
+      }
+      if (r.code === 401 || r.code === 403) {
+        // push-сервис не принял нашу подпись: чаще всего сменился (или не
+        // подхватился) VAPID-ключ. Сразу не рубим — считаем отказы.
+        failed.push(s.id);
+        console.error("push rejected (VAPID?)", r.code, r.detail);
+      } else {
+        console.error("push error", r.code, r.detail);
+      }
+      // адресуем повтор по endpoint: если человек за это время переподписался,
+      // строка отвалится сама, а живому устройству дубль не прилетит
+      await enqueue("push", s.endpoint, s.userId, payload, r.detail);
     })
   );
 
@@ -220,15 +297,17 @@ async function sendTelegram(userIds: string[], payload: NotifyPayload) {
 
   const users = await prisma.user.findMany({
     where: { id: { in: userIds }, telegramChatId: { not: null } },
-    select: { telegramChatId: true },
+    select: { id: true, telegramChatId: true },
   });
 
   await Promise.allSettled(
-    users.map((u) =>
-      telegramSend(u.telegramChatId as string, telegramText(payload), {
+    users.map(async (u) => {
+      const chat = u.telegramChatId as string;
+      const ok = await telegramSend(chat, telegramText(payload), {
         url: payload.url,
-      })
-    )
+      });
+      if (!ok) await enqueue("telegram", chat, u.id, payload, "send failed");
+    })
   );
 }
 
@@ -236,7 +315,10 @@ async function sendTelegram(userIds: string[], payload: NotifyPayload) {
 async function sendTelegramGroup(payload: NotifyPayload) {
   const chat = process.env.TELEGRAM_GROUP_CHAT_ID;
   if (!chat || !telegramEnabled()) return;
-  await telegramSend(chat, telegramText(payload), { url: payload.url });
+  const ok = await telegramSend(chat, telegramText(payload), {
+    url: payload.url,
+  });
+  if (!ok) await enqueue("group", chat, null, payload, "send failed");
 }
 
 // ─────────────────────────── Точки входа ───────────────────────────
@@ -284,4 +366,183 @@ export function personName(u: {
 // «Вагон №61-107» — как его называют в цехах.
 export function wagonLabel(w: { number: string }): string {
   return `№${w.number}`;
+}
+
+// ─────────────────────── Разбор очереди повторов ───────────────────────
+
+export interface FlushResult {
+  sent: number; // доставили с повтора
+  failed: number; // снова не вышло, попробуем позже
+  gaveUp: number; // исчерпали попытки
+  dropped: number; // повторять некуда: устройство отписалось
+}
+
+// За один прогон берём столько строк. Больше не нужно: на Vercel Hobby у
+// функции 60 секунд, а телеграм отвечает за доли секунды.
+const FLUSH_BATCH = 50;
+
+// «Аренда» строки: сразу отодвигаем nextTryAt, чтобы два прогона крона,
+// наложившись друг на друга, не отправили одно уведомление дважды.
+const LEASE_MIN = 5;
+
+// Сколько держим разобранные строки. Доставленные нужны недолго — только
+// чтобы понять «дошло или нет», а несдавшиеся оставляем на месяц: по ним
+// видно, что именно ломается.
+const KEEP_SENT_DAYS = 3;
+const KEEP_GAVEUP_DAYS = 30;
+
+async function purgeOutbox() {
+  const now = Date.now();
+  await prisma.notificationOutbox
+    .deleteMany({
+      where: { sentAt: { lt: new Date(now - KEEP_SENT_DAYS * 86400_000) } },
+    })
+    .catch(() => {});
+  await prisma.notificationOutbox
+    .deleteMany({
+      where: {
+        sentAt: null,
+        nextTryAt: null,
+        createdAt: { lt: new Date(now - KEEP_GAVEUP_DAYS * 86400_000) },
+      },
+    })
+    .catch(() => {});
+}
+
+type OutboxRow = {
+  id: string;
+  channel: string;
+  target: string | null;
+  title: string;
+  body: string;
+  url: string | null;
+  tag: string | null;
+  attempts: number;
+};
+
+type AttemptResult =
+  | { kind: "ok" }
+  | { kind: "retry"; detail: string }
+  | { kind: "drop" } // адресата больше нет
+  | { kind: "skip" }; // канал выключен — попытку не тратим
+
+async function attemptRow(row: OutboxRow): Promise<AttemptResult> {
+  const payload: NotifyPayload = {
+    title: row.title,
+    body: row.body,
+    url: row.url ?? undefined,
+    tag: row.tag ?? undefined,
+  };
+
+  if (row.channel === "telegram" || row.channel === "group") {
+    if (!row.target) return { kind: "drop" };
+    if (!telegramEnabled()) return { kind: "skip" };
+    const ok = await telegramSend(row.target, telegramText(payload), {
+      url: payload.url,
+    });
+    return ok ? { kind: "ok" } : { kind: "retry", detail: "send failed" };
+  }
+
+  if (row.channel === "push") {
+    if (!row.target) return { kind: "drop" };
+    if (!pushEnabled()) return { kind: "skip" };
+    const sub = await prisma.pushSubscription.findUnique({
+      where: { endpoint: row.target },
+    });
+    // устройство переподписалось или отписалось — слать уже некуда
+    if (!sub) return { kind: "drop" };
+    const r = await pushOne(sub, pushBody(payload));
+    if (r.outcome === "ok") return { kind: "ok" };
+    if (r.outcome === "dead") {
+      await prisma.pushSubscription
+        .delete({ where: { id: sub.id } })
+        .catch(() => {});
+      return { kind: "drop" };
+    }
+    return { kind: "retry", detail: r.detail };
+  }
+
+  return { kind: "drop" }; // неизвестный канал — мусор из старой версии
+}
+
+// Добивает недоставленное. Вызывается кроном; сам никогда не бросает.
+export async function flushOutbox(limit = FLUSH_BATCH): Promise<FlushResult> {
+  const res: FlushResult = { sent: 0, failed: 0, gaveUp: 0, dropped: 0 };
+  if (!NOTIFICATIONS_ENABLED) return res;
+
+  try {
+    const rows = await prisma.notificationOutbox.findMany({
+      where: { sentAt: null, nextTryAt: { lte: new Date() } },
+      orderBy: { nextTryAt: "asc" },
+      take: limit,
+      select: {
+        id: true,
+        channel: true,
+        target: true,
+        title: true,
+        body: true,
+        url: true,
+        tag: true,
+        attempts: true,
+      },
+    });
+
+    if (rows.length > 0) {
+      await prisma.notificationOutbox.updateMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+        data: { nextTryAt: new Date(Date.now() + LEASE_MIN * 60_000) },
+      });
+    }
+
+    for (const row of rows) {
+      const r = await attemptRow(row);
+
+      if (r.kind === "skip") continue; // аренда сама отпустит строку
+
+      if (r.kind === "drop") {
+        await prisma.notificationOutbox
+          .delete({ where: { id: row.id } })
+          .catch(() => {});
+        res.dropped++;
+        continue;
+      }
+
+      if (r.kind === "ok") {
+        await prisma.notificationOutbox
+          .update({
+            where: { id: row.id },
+            data: {
+              sentAt: new Date(),
+              nextTryAt: null,
+              attempts: { increment: 1 },
+              lastError: null,
+            },
+          })
+          .catch(() => {});
+        res.sent++;
+        continue;
+      }
+
+      const attempts = row.attempts + 1;
+      const done = attempts >= MAX_ATTEMPTS;
+      await prisma.notificationOutbox
+        .update({
+          where: { id: row.id },
+          data: {
+            attempts,
+            lastError: r.detail.slice(0, 500),
+            nextTryAt: done ? null : nextTry(attempts),
+          },
+        })
+        .catch(() => {});
+      if (done) res.gaveUp++;
+      else res.failed++;
+    }
+
+    await purgeOutbox();
+  } catch (err) {
+    console.error("flushOutbox", err);
+  }
+
+  return res;
 }

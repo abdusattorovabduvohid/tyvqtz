@@ -21,6 +21,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
   IconAlertTriangle,
+  IconBell,
   IconDatabase,
   IconDeviceMobile,
   IconLogout,
@@ -67,6 +68,15 @@ interface ControlData {
   people: Person[];
   offlineCount: number;
   logs: LogRow[];
+  notify: {
+    enabled: boolean;
+    // ждут повтора
+    queued: number;
+    // попытки исчерпаны — доставить не удалось
+    gaveUp: number;
+    // сотрудники без телеграма: до них уведомления не дойдут
+    noTelegram: { id: string; name: string; seh: string | null }[];
+  };
 }
 
 // Панель открыта на экране подолгу, поэтому обновляем её сами. 30 секунд —
@@ -260,6 +270,39 @@ export function ControlPanel({ meId }: { meId: string }) {
           </Box>
         </Group>
       </Card>
+
+      {/* ── Уведомления ── */}
+      {data.notify.enabled && (
+        <Card withBorder radius="md" padding="sm">
+          <Group gap="sm" wrap="nowrap" align="flex-start">
+            <IconBell size={20} color="var(--mantine-color-steel-6)" />
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <Text size="sm" fw={600}>
+                {t("control.notify")}
+              </Text>
+              <Text
+                size="xs"
+                c={data.notify.gaveUp > 0 ? "red.7" : "dimmed"}
+                lh={1.4}
+              >
+                {t("control.notifyQueue", {
+                  queued: data.notify.queued,
+                  gaveUp: data.notify.gaveUp,
+                })}
+              </Text>
+              {data.notify.noTelegram.length > 0 && (
+                <Text size="xs" c="orange.8" lh={1.4} mt={4}>
+                  {t("control.notifyNoTelegram", {
+                    n: data.notify.noTelegram.length,
+                  })}
+                  {": "}
+                  {data.notify.noTelegram.map((p) => p.name).join(", ")}
+                </Text>
+              )}
+            </Box>
+          </Group>
+        </Card>
+      )}
 
       {/* ── Кто в сети ── */}
       <Box>

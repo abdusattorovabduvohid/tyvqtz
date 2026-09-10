@@ -63,6 +63,7 @@ async function main() {
       lastName: "Админ",
       middleName: null,
       passwordHash,
+      passwordPlain: "admin123",
       roleId: superRole.id,
     },
   });

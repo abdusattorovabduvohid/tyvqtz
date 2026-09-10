@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { wagonSchedule } from "@/lib/format";
-import { notifyUsers, notifyUsersAndGroup } from "@/lib/notify";
+import { notifyUsers, notifyUsersAndGroup, flushOutbox } from "@/lib/notify";
 import { notificationsOff } from "@/lib/feature-guard";
+import { authorizedCron } from "@/lib/cron";
 
 // Ежедневные напоминания по плану. Запускается кроном раз в сутки утром
 // (см. vercel.json). Смотрит план дат каждого вагона и шлёт:
@@ -30,15 +31,6 @@ function addDays(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(r.getDate() + n);
   return r;
-}
-
-function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = req.headers.get("authorization");
-  if (header === `Bearer ${secret}`) return true;
-  const key = new URL(req.url).searchParams.get("key");
-  return key === secret;
 }
 
 async function run() {
@@ -144,12 +136,15 @@ export async function GET(req: Request) {
   const off = notificationsOff();
   if (off) return off;
 
-  if (!authorized(req)) {
+  if (!authorizedCron(req)) {
     return NextResponse.json({ error: "Недостаточно прав" }, { status: 401 });
   }
   try {
     const sent = await run();
-    return NextResponse.json({ ok: true, sent });
+    // Заодно добиваем вчерашние недоставленные: даже если внешний
+    // планировщик отвалился, раз в сутки очередь всё равно разберётся.
+    const retried = await flushOutbox();
+    return NextResponse.json({ ok: true, sent, retried });
   } catch (err) {
     console.error("cron/notify", err);
     return NextResponse.json({ error: "Ошибка крона" }, { status: 500 });

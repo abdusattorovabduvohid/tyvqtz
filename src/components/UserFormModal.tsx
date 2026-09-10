@@ -27,6 +27,8 @@ export interface UserRow {
   middleName: string | null;
   photo: string | null;
   seh: string | null;
+  // текущий пароль открытым текстом; у старых пользователей его нет
+  passwordPlain?: string | null;
   isActive: boolean;
   role: { id: string; nameRu: string; nameUz: string | null };
 }
@@ -62,12 +64,14 @@ export function UserFormModal({
       roleId: "",
     },
     validate: {
-      login: (v) =>
-        !editing && v.trim().length < 3 ? "Логин минимум 3 символа" : null,
+      login: (v) => (v.trim().length < 3 ? "Логин минимум 3 символа" : null),
       firstName: (v) => (v.trim() ? null : "Введите имя"),
       lastName: (v) => (v.trim() ? null : "Введите фамилию"),
+      // при редактировании поле можно очистить — тогда пароль не трогаем
       password: (v) =>
-        !editing && v.length < 4 ? "Пароль минимум 4 символа" : null,
+        (!editing || v.length > 0) && v.length < 4
+          ? "Пароль минимум 4 символа"
+          : null,
       roleId: (v) => (v ? null : "Выберите роль"),
     },
   });
@@ -81,7 +85,9 @@ export function UserFormModal({
           lastName: initial.lastName,
           middleName: initial.middleName ?? "",
           seh: initial.seh ?? "",
-          password: "",
+          // подставляем текущий пароль, чтобы он был виден и правился
+          // на месте; у старых записей его нет — поле останется пустым
+          password: initial.passwordPlain ?? "",
           roleId: initial.role.id,
         });
         setPhoto(initial.photo);
@@ -96,8 +102,8 @@ export function UserFormModal({
   async function handleSubmit(values: typeof form.values) {
     setSaving(true);
     try {
-      // login отправляем только при создании (менять его нельзя),
-      // password — только когда его действительно ввели
+      // login отправляем всегда — его теперь можно менять и при
+      // редактировании; password — только когда его действительно ввели
       const payload: {
         firstName: string;
         lastName: string;
@@ -114,8 +120,14 @@ export function UserFormModal({
         seh: values.seh?.trim() || null,
         photo: photo || null,
         roleId: values.roleId,
+        login: values.login.trim(),
       };
-      if (values.password) payload.password = values.password;
+      // пароль шлём только если он вправду другой: иначе повторный хеш
+      // поднял бы версию токена и выкинул человека из системы ни за что
+      const passwordChanged =
+        Boolean(values.password) &&
+        values.password !== (initial?.passwordPlain ?? "");
+      if (!editing || passwordChanged) payload.password = values.password;
 
       if (editing && initial) {
         await apiFetch(`/api/users/${initial.id}`, {
@@ -124,7 +136,6 @@ export function UserFormModal({
         });
         notifications.show({ color: "teal", message: t("users.updated") });
       } else {
-        payload.login = values.login;
         await apiFetch("/api/users", {
           method: "POST",
           body: JSON.stringify(payload),
@@ -190,19 +201,32 @@ export function UserFormModal({
               />
             </Group>
 
-            {!editing && (
-              <TextInput
-                label={t("login.login")}
-                placeholder="ivanov"
-                withAsterisk
-                {...form.getInputProps("login")}
-              />
-            )}
+            <TextInput
+              label={t("login.login")}
+              placeholder="ivanov"
+              description={editing ? t("users.loginEditHint") : undefined}
+              withAsterisk
+              {...form.getInputProps("login")}
+            />
 
             <Group grow>
+              {/* Пароль известен — показываем его как есть; если в базе его
+                  нет (человек заведён до этой правки), поле пустое и
+                  подпись объясняет, что старый пароль восстановить нельзя. */}
               <PasswordInput
-                label={editing ? t("users.passwordEdit") : t("users.password")}
+                label={
+                  editing && !initial?.passwordPlain
+                    ? t("users.passwordEdit")
+                    : t("users.password")
+                }
                 placeholder="••••••"
+                description={
+                  editing
+                    ? initial?.passwordPlain
+                      ? t("users.passwordKnownHint")
+                      : t("users.passwordEditHint")
+                    : undefined
+                }
                 withAsterisk={!editing}
                 {...form.getInputProps("password")}
               />

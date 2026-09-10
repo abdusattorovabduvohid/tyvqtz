@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
+import { can } from "@/lib/permissions";
 
 const createSchema = z.object({
   login: z.string().min(3, "Логин минимум 3 символа"),
@@ -17,14 +18,20 @@ const createSchema = z.object({
 
 export async function GET() {
   try {
-    await requirePermission("users", "view");
+    const me = await requirePermission("users", "view");
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "desc" },
       include: {
         role: { select: { id: true, nameRu: true, nameUz: true, isSuperAdmin: true } },
       },
     });
-    const data = users.map(({ passwordHash, ...u }) => u);
+    // Открытый пароль видит только тот, кто вправе редактировать людей:
+    // права «просмотр» для этого мало.
+    const canEdit = can(me.role, "users", "update");
+    const data = users.map(({ passwordHash, passwordPlain, ...u }) => ({
+      ...u,
+      ...(canEdit ? { passwordPlain } : {}),
+    }));
     return NextResponse.json({ users: data });
   } catch (err) {
     return handleError(err);
@@ -52,6 +59,7 @@ export async function POST(req: Request) {
         photo: data.photo || null,
         seh: data.seh?.trim() || null,
         passwordHash: await hashPassword(data.password),
+        passwordPlain: data.password,
         roleId: data.roleId,
       },
       include: { role: { select: { id: true, nameRu: true, nameUz: true } } },

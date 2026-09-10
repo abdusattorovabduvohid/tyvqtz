@@ -10,4 +10,4 @@
 //
 // Выключение НИЧЕГО не ломает и не удаляет: подписки устройств и привязки
 // телеграма остаются в базе. Вернёте true — всё заработает как было.
-export const NOTIFICATIONS_ENABLED = false;
+export const NOTIFICATIONS_ENABLED = true;

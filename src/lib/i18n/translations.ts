@@ -171,6 +171,12 @@ const ru: Dict = {
   "users.sehHint": "Номер цеха (для распределения работ)",
   "users.password": "Пароль",
   "users.passwordEdit": "Новый пароль (необязательно)",
+  "users.loginEditHint":
+    "Изменённый логин заменит старый — по старому вход закроется",
+  "users.passwordEditHint":
+    "Старый пароль показать нельзя. Пусто — пароль не меняется",
+  "users.passwordKnownHint":
+    "Текущий пароль. Измените — по старому вход закроется",
   "users.dropzone": "Перетащите или выберите фото",
   "users.selectRole": "Выберите роль",
 
@@ -539,6 +545,10 @@ const ru: Dict = {
   "control.todayFail": "Неудачных попыток",
   "control.backup": "Резервная копия базы",
   "control.backupNever": "Отметки нет — проверьте GitHub Actions",
+  "control.notify": "Уведомления",
+  "control.notifyQueue":
+    "В очереди на повтор: {queued} · не доставлено: {gaveUp}",
+  "control.notifyNoTelegram": "Телеграм не подключён у {n} чел.",
   "control.who": "Кто в сети",
   "control.onlineMeans": "«в сети» = активность за {n} мин",
   "control.online": "В сети",
@@ -725,6 +735,12 @@ const uz: Dict = {
   "users.sehHint": "Sex raqami (ishlarni taqsimlash uchun)",
   "users.password": "Parol",
   "users.passwordEdit": "Yangi parol (ixtiyoriy)",
+  "users.loginEditHint":
+    "Loginni o‘zgartirsangiz, eski login bilan kirib bo‘lmaydi",
+  "users.passwordEditHint":
+    "Eski parolni ko‘rsatib bo‘lmaydi. Bo‘sh qoldirsangiz — parol o‘zgarmaydi",
+  "users.passwordKnownHint":
+    "Hozirgi parol. O‘zgartirsangiz, eskisi bilan kirib bo‘lmaydi",
   "users.dropzone": "Suratni torting yoki tanlang",
   "users.selectRole": "Rolni tanlang",
 
@@ -1082,6 +1098,10 @@ const uz: Dict = {
   "control.todayFail": "Xato urinish",
   "control.backup": "Bazaning zaxira nusxasi",
   "control.backupNever": "Belgi yo‘q — GitHub Actions’ni tekshiring",
+  "control.notify": "Bildirishnomalar",
+  "control.notifyQueue":
+    "Qayta yuborish navbatida: {queued} · yetkazilmadi: {gaveUp}",
+  "control.notifyNoTelegram": "{n} kishida telegram ulanmagan",
   "control.who": "Kim tizimda",
   "control.onlineMeans": "«tizimda» = {n} daqiqada faol edi",
   "control.online": "Tizimda",

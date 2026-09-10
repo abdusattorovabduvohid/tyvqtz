@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { handleError, requireSuperAdmin } from "@/lib/api";
 import { presenceOf, ONLINE_MIN, IDLE_MIN } from "@/lib/presence";
 import { getSetting, isSiteEnabled, LAST_BACKUP_AT } from "@/lib/settings";
+import { NOTIFICATIONS_ENABLED } from "@/lib/features";
 
 // Всё, что показывает панель контроля, одним запросом: состояние сайта,
 // счётчики, кто в сети и последние входы. Отдельные эндпоинты на каждую
@@ -57,6 +58,26 @@ export async function GET() {
         prisma.loginLog.count({ where: { success: false, createdAt: { gte: dayAgo } } }),
       ]);
 
+    // Здоровье уведомлений: сколько застряло в очереди, по скольким сдались
+    // и кто из сотрудников не подключил телеграм — такой человек ни одного
+    // уведомления не получит, и знать об этом надо заранее, а не по факту
+    // сорванного срока.
+    const [queued, gaveUp, noTelegram] = NOTIFICATIONS_ENABLED
+      ? await Promise.all([
+          prisma.notificationOutbox.count({
+            where: { sentAt: null, nextTryAt: { not: null } },
+          }),
+          prisma.notificationOutbox.count({
+            where: { sentAt: null, nextTryAt: null },
+          }),
+          prisma.user.findMany({
+            where: { isActive: true, telegramChatId: null },
+            orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+            select: { id: true, firstName: true, lastName: true, seh: true },
+          }),
+        ])
+      : [0, 0, [] as { id: string; firstName: string; lastName: string; seh: string | null }[]];
+
     const people = users.map((u) => ({
       id: u.id,
       name: `${u.lastName} ${u.firstName}`,
@@ -80,6 +101,16 @@ export async function GET() {
       // строк «был вчера» на телефоне листать невозможно.
       people: people.filter((p) => p.lastSeenAt && p.lastSeenAt >= idleFrom),
       offlineCount: people.filter((p) => !p.lastSeenAt || p.lastSeenAt < idleFrom).length,
+      notify: {
+        enabled: NOTIFICATIONS_ENABLED,
+        queued,
+        gaveUp,
+        noTelegram: noTelegram.map((u) => ({
+          id: u.id,
+          name: `${u.lastName} ${u.firstName}`,
+          seh: u.seh,
+        })),
+      },
       logs: logs.map((l) => ({
         ...l,
         name: l.user ? `${l.user.lastName} ${l.user.firstName}` : null,

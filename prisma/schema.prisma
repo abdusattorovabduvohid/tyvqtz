@@ -37,6 +37,11 @@ model User {
   photo        String? // путь к фотографии
   seh          String? // номер цеха работника (2, 8, 15, 28 …); у админов пусто
   passwordHash String
+  // Пароль в открытом виде — только чтобы админ видел его в карточке
+  // сотрудника и мог продиктовать. Вход по-прежнему проверяется по хешу.
+  // У старых пользователей пусто: восстановить пароль из хеша нельзя.
+  // Отдаём это поле лишь тем, у кого есть право users.update.
+  passwordPlain String?
   isActive     Boolean  @default(true)
   roleId       String
   role         Role     @relation(fields: [roleId], references: [id])
@@ -323,4 +328,44 @@ model AppSetting {
   value     String
   updatedAt DateTime @updatedAt
   updatedBy String? // id суперадмина, который переключил
+}
+
+// Очередь недоставленных уведомлений.
+//
+// Отправка идёт сразу, в том же запросе. Сюда падает только то, что НЕ ушло:
+// телеграм не ответил за 7 секунд, заводской интернет моргнул, push-сервис
+// отдал 500. Без этой таблицы такое уведомление терялось навсегда — а оно
+// может быть единственным сигналом бригаде, что позиция просрочена.
+//
+// Разбирает очередь /api/cron/retry: он лёгкий и его можно дёргать хоть
+// каждые 5 минут (на Vercel Hobby крон ходит раз в сутки, поэтому снаружи —
+// cron-job.org). Повторы идут с нарастающей паузой, после MAX_ATTEMPTS
+// сдаёмся: строка остаётся с nextTryAt = null и виден lastError.
+model NotificationOutbox {
+  id String @id @default(cuid())
+
+  // "telegram" — личный чат, "push" — подписка браузера, "group" — общий чат
+  channel String
+  // кому предназначалось: нужно для отчёта в панели контроля
+  userId  String?
+  // адрес доставки: chat id телеграма или endpoint подписки; у группы пусто
+  target  String?
+
+  title String
+  body  String
+  url   String?
+  tag   String?
+
+  attempts  Int     @default(0)
+  lastError String?
+
+  // когда пробовать снова. null — больше не пробуем: либо доставлено
+  // (стоит sentAt), либо исчерпали попытки.
+  nextTryAt DateTime?
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // очередь всегда выбирается по nextTryAt, чистка — по sentAt
+  @@index([nextTryAt])
+  @@index([sentAt])
 }
