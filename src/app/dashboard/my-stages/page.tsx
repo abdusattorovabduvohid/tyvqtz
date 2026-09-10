@@ -44,6 +44,7 @@ import type {
   WagonBrief,
 } from "@/lib/api-types";
 import { revealDelay } from "@/lib/anim";
+import { useVisiblePoll } from "@/lib/use-poll";
 import { Page, PageHeader } from "@/components/Page";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
@@ -93,12 +94,9 @@ export default function MyStagesPage() {
 
   useEffect(() => {
     load();
-    // не опрашиваем сервер, пока вкладка/приложение в фоне
-    const timer = setInterval(() => {
-      if (!document.hidden) load(true);
-    }, 5000);
-    return () => clearInterval(timer);
   }, [load]);
+
+  useVisiblePoll(useCallback(() => load(true), [load]));
 
   async function patch(stageId: string, body: StageAction, key: string, okMsg: string) {
     setBusy(key);

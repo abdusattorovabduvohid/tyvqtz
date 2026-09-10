@@ -36,6 +36,10 @@ import { NOTIFICATIONS_ENABLED } from "@/lib/features";
 import { UserFormModal, type UserRow } from "@/components/UserFormModal";
 
 
+// С колонкой уведомлений строка не помещается в телефон: пусть таблица
+// скроллится вбок, а не давит текст в столбик.
+const TABLE_MIN_WIDTH = NOTIFICATIONS_ENABLED ? 840 : 680;
+
 export default function UsersPage() {
   const can = useCan();
   const { t, lang } = useI18n();
@@ -156,7 +160,7 @@ export default function UsersPage() {
             <Text c="dimmed">{t("users.empty")}</Text>
           </Center>
         ) : (
-          <Table.ScrollContainer minWidth={680}>
+          <Table.ScrollContainer minWidth={TABLE_MIN_WIDTH}>
             <Table verticalSpacing="sm" highlightOnHover>
               <Table.Thead>
                 <Table.Tr>

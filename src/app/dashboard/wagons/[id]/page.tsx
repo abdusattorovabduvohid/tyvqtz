@@ -42,6 +42,7 @@ import {
   IconCalendarEvent,
 } from "@tabler/icons-react";
 import { apiFetch, showError } from "@/lib/client";
+import { useVisiblePoll } from "@/lib/use-poll";
 import type { StageAction, CreationAction } from "@/lib/api-schemas";
 import { Page } from "@/components/Page";
 import { useUser, useCan } from "@/components/UserContext";
@@ -190,13 +191,9 @@ export default function WagonDetailPage() {
 
   useEffect(() => {
     load();
-    // Не опрашиваем сервер, пока вкладка/приложение в фоне: в установленной PWA
-    // это лишняя нагрузка и память, из-за которой iOS быстрее убивает процесс.
-    const t = setInterval(() => {
-      if (!document.hidden) load(true);
-    }, 5000);
-    return () => clearInterval(t);
   }, [load]);
+
+  useVisiblePoll(useCallback(() => load(true), [load]));
 
   async function patch(stageId: string, body: StageAction, key: string, okMsg: string) {
     setBusy(key);
