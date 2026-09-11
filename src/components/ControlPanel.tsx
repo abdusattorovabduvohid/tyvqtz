@@ -60,8 +60,26 @@ interface LogRow {
   createdAt: string;
 }
 
+interface DeviceRow {
+  id: string;
+  name: string;
+  login: string;
+  device: string | null;
+  os: string | null;
+  browser: string | null;
+  ipCity: string | null;
+  attempts: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
 interface ControlData {
   siteEnabled: boolean;
+  devices: {
+    // попытки войти под чужой учёткой — ждут решения суперадмина
+    pending: DeviceRow[];
+    trusted: DeviceRow[];
+  };
   lastBackupAt: string | null;
   onlineMin: number;
   counts: { online: number; todayOk: number; todayFail: number };
@@ -171,6 +189,39 @@ export function ControlPanel({ meId }: { meId: string }) {
           showError(e);
         }
       },
+    });
+  }
+
+  async function deviceAction(d: DeviceRow, action: "approve" | "remove") {
+    try {
+      await apiFetch("/api/control/devices", {
+        method: "POST",
+        body: JSON.stringify({ id: d.id, action }),
+      });
+      notifications.show({
+        color: action === "approve" ? "teal" : "orange",
+        message:
+          action === "approve"
+            ? t("control.devicesApproved")
+            : t("control.devicesRemoved"),
+      });
+      await load();
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  // Забыть одобренный телефон — человек потом не войдёт с него, пока не
+  // разрешат снова. Спрашиваем, чтобы не отрезать кого-то случайным тапом.
+  function confirmForget(d: DeviceRow) {
+    modals.openConfirmModal({
+      title: t("control.devicesForgetTitle"),
+      children: (
+        <Text size="sm">{t("control.devicesForgetBody", { name: d.name })}</Text>
+      ),
+      labels: { confirm: t("control.devicesForget"), cancel: t("common.cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => deviceAction(d, "remove"),
     });
   }
 
@@ -337,6 +388,134 @@ export function ControlPanel({ meId }: { meId: string }) {
           </Group>
         </Card>
       )}
+
+      {/* ── Устройства ── */}
+      {/* Неодобренные — это вход под чужой учёткой: красным и наверх, чтобы
+          не потерялись среди остального. */}
+      <Card
+        withBorder
+        radius="md"
+        padding="sm"
+        style={
+          data.devices.pending.length > 0
+            ? { borderColor: "var(--mantine-color-red-4)" }
+            : undefined
+        }
+      >
+        <Group gap="sm" wrap="nowrap" align="flex-start">
+          <IconDeviceMobile
+            size={20}
+            color={
+              data.devices.pending.length > 0
+                ? "var(--mantine-color-red-6)"
+                : "var(--mantine-color-steel-6)"
+            }
+          />
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            <Text size="sm" fw={600}>
+              {t("control.devices")}
+            </Text>
+            <Text
+              size="xs"
+              c={data.devices.pending.length > 0 ? "red.7" : "dimmed"}
+            >
+              {data.devices.pending.length > 0
+                ? t("control.devicesPending", { n: data.devices.pending.length })
+                : t("control.devicesNone")}
+            </Text>
+
+            {data.devices.pending.length > 0 && (
+              <Stack gap={0} mt="xs">
+                {data.devices.pending.map((d) => (
+                  <Box
+                    key={d.id}
+                    py="xs"
+                    style={{ borderTop: "1px solid var(--mantine-color-gray-2)" }}
+                  >
+                    <Text size="sm" fw={600}>
+                      {d.name}{" "}
+                      <Text span size="xs" c="dimmed">
+                        ({d.login})
+                      </Text>
+                    </Text>
+                    <Text size="xs">{deviceLine(d)}</Text>
+                    <Text size="xs" c="dimmed">
+                      {[
+                        d.ipCity,
+                        timeAgo(d.lastSeenAt, t),
+                        t("control.devicesAttempts", { n: d.attempts }),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                    <Group gap="xs" mt={6}>
+                      <Button
+                        size="compact-xs"
+                        color="teal"
+                        onClick={() => deviceAction(d, "approve")}
+                      >
+                        {t("control.devicesApprove")}
+                      </Button>
+                      <Button
+                        size="compact-xs"
+                        color="red"
+                        variant="light"
+                        onClick={() => deviceAction(d, "remove")}
+                      >
+                        {t("control.devicesReject")}
+                      </Button>
+                    </Group>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+
+            {/* Одобренных десятки: прячем под раскрывашку, нужна она редко —
+                когда человек сменил телефон и старый надо забыть. */}
+            {data.devices.trusted.length > 0 && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer" }}>
+                  <Text span size="xs" c="steel.7" fw={600}>
+                    {t("control.devicesTrusted", {
+                      n: data.devices.trusted.length,
+                    })}
+                  </Text>
+                </summary>
+                <Stack gap={0} mt={4}>
+                  {data.devices.trusted.map((d) => (
+                    <Group
+                      key={d.id}
+                      justify="space-between"
+                      wrap="nowrap"
+                      py={6}
+                      style={{
+                        borderTop: "1px solid var(--mantine-color-gray-2)",
+                      }}
+                    >
+                      <Box style={{ minWidth: 0 }}>
+                        <Text size="xs" fw={600} truncate>
+                          {d.name} ({d.login})
+                        </Text>
+                        <Text size="xs" c="dimmed" truncate>
+                          {deviceLine(d)} · {timeAgo(d.lastSeenAt, t)}
+                        </Text>
+                      </Box>
+                      <Button
+                        size="compact-xs"
+                        color="red"
+                        variant="subtle"
+                        onClick={() => confirmForget(d)}
+                      >
+                        {t("control.devicesForget")}
+                      </Button>
+                    </Group>
+                  ))}
+                </Stack>
+              </details>
+            )}
+          </Box>
+        </Group>
+      </Card>
 
       {/* ── Кто в сети ── */}
       <Box>

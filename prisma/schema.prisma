@@ -65,6 +65,7 @@ model User {
   tokenVersion Int       @default(0)
 
   loginLogs              LoginLog[]
+  devices                UserDevice[]
   pushSubscriptions      PushSubscription[]
   assignedWagonStages    WagonStageAssignment[]
   startedStages          WagonStage[]            @relation("StageStartedBy")
@@ -316,6 +317,49 @@ model LoginLog {
   @@index([createdAt])
   @@index([loginTried, createdAt])
   @@index([userId, createdAt])
+}
+
+// Устройства, с которых человеку разрешено входить.
+//
+// Логин с паролем передаются из рук в руки, кука — нет: при первом входе
+// браузеру кладётся случайный id, и он же приходит при следующих. Чужой
+// телефон приходит без него — так и видно, что под учёткой вошёл кто-то
+// ещё. Первое устройство доверяем молча (иначе включение проверки заперло
+// бы всех разом), остальные открывает суперадмин из панели контроля.
+//
+// Слабое место известно: почистили данные браузера, переустановили его или
+// зашли инкогнито — для нас это новое устройство. Поэтому одобрение должно
+// быть в одно нажатие, а вход с неодобренного устройства не трогает уже
+// открытую сессию человека на его обычном телефоне.
+model UserDevice {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // случайный id из долгоживущей куки браузера
+  deviceId String
+
+  // как показать в панели: «Samsung SM-A156 · Android · Chrome»
+  device  String?
+  os      String?
+  browser String?
+  ip      String?
+  ipCity  String?
+
+  approved   Boolean   @default(false)
+  approvedAt DateTime?
+  approvedBy String? // id суперадмина, который разрешил
+
+  // сколько раз пытались войти с неодобренного устройства
+  attempts Int @default(1)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  // вход ищет строку ровно по этой паре
+  @@unique([userId, deviceId])
+  // лента панели: сначала неодобренные, свежие сверху
+  @@index([approved, lastSeenAt])
 }
 
 // Настройки, которые меняются на ходу, без деплоя.

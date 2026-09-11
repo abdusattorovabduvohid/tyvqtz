@@ -28,7 +28,7 @@ export async function checkLock(loginTried: string): Promise<LockState> {
   const recent = await prisma.loginLog.findMany({
     where: { loginTried, createdAt: { gte: since } },
     orderBy: { createdAt: "desc" },
-    select: { success: true, createdAt: true },
+    select: { success: true, reason: true, createdAt: true },
     take: MAX_ATTEMPTS * 2,
   });
 
@@ -36,6 +36,10 @@ export async function checkLock(loginTried: string): Promise<LockState> {
   let oldestFailure: Date | null = null;
   for (const row of recent) {
     if (row.success) break;
+    // Вход с неодобренного телефона — не подбор: пароль-то верный. Считай
+    // мы такие попытки, чужой телефон за пять нажатий запер бы на 15 минут
+    // и хозяина учётки на его собственном.
+    if (row.reason === "new_device") continue;
     failures += 1;
     oldestFailure = row.createdAt;
   }

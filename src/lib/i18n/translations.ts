@@ -594,6 +594,22 @@ const ru: Dict = {
   "control.reason.inactive": "Учётка отключена",
   "control.reason.locked": "Заблокировано",
   "control.reason.site_off": "Сайт выключен",
+  "control.reason.new_device": "Чужое устройство",
+  "control.devices": "Устройства",
+  "control.devicesPending": "Вход с чужого устройства: {n}",
+  "control.devicesNone": "Попыток входа с чужих устройств нет",
+  "control.devicesAttempts": "попыток: {n}",
+  "control.devicesApprove": "Разрешить",
+  "control.devicesReject": "Отклонить",
+  "control.devicesForget": "Забыть",
+  "control.devicesApproved": "Устройство разрешено",
+  "control.devicesRemoved": "Устройство удалено",
+  "control.devicesTrusted": "Разрешённые устройства: {n}",
+  "control.devicesShow": "Показать",
+  "control.devicesHide": "Скрыть",
+  "control.devicesForgetTitle": "Забыть устройство?",
+  "control.devicesForgetBody":
+    "{name} больше не сможет войти с этого устройства без вашего разрешения. Уже открытый сеанс не прервётся — для этого есть «Выкинуть».",
 };
 
 const uz: Dict = {
@@ -1164,6 +1180,22 @@ const uz: Dict = {
   "control.reason.inactive": "Hisob o‘chirilgan",
   "control.reason.locked": "Bloklangan",
   "control.reason.site_off": "Sayt o‘chirilgan",
+  "control.reason.new_device": "Begona qurilma",
+  "control.devices": "Qurilmalar",
+  "control.devicesPending": "Begona qurilmadan kirish: {n}",
+  "control.devicesNone": "Begona qurilmadan kirishga urinish yo‘q",
+  "control.devicesAttempts": "urinish: {n}",
+  "control.devicesApprove": "Ruxsat berish",
+  "control.devicesReject": "Rad etish",
+  "control.devicesForget": "Unutish",
+  "control.devicesApproved": "Qurilmaga ruxsat berildi",
+  "control.devicesRemoved": "Qurilma o‘chirildi",
+  "control.devicesTrusted": "Ruxsat berilgan qurilmalar: {n}",
+  "control.devicesShow": "Ko‘rsatish",
+  "control.devicesHide": "Yashirish",
+  "control.devicesForgetTitle": "Qurilmani unutasizmi?",
+  "control.devicesForgetBody":
+    "{name} bu qurilmadan endi sizning ruxsatingizsiz kira olmaydi. Hozir ochiq seansi uzilmaydi — buning uchun «Chiqarish» tugmasi bor.",
 };
 
 export const DICT: Record<Lang, Dict> = { ru, uz };

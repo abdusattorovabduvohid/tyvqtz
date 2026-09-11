@@ -85,6 +85,47 @@ export async function GET() {
           null,
         ];
 
+    // Устройства: неодобренные — это попытки войти под чужой учёткой, их
+    // показываем все. Одобренных десятки — отдаём, но панель прячет их
+    // под кнопку.
+    const deviceSelect = {
+      id: true,
+      device: true,
+      os: true,
+      browser: true,
+      ipCity: true,
+      attempts: true,
+      firstSeenAt: true,
+      lastSeenAt: true,
+      user: { select: { firstName: true, lastName: true, login: true } },
+    } as const;
+    const [pendingDevices, trustedDevices] = await Promise.all([
+      prisma.userDevice.findMany({
+        where: { approved: false },
+        orderBy: { lastSeenAt: "desc" },
+        take: 50,
+        select: deviceSelect,
+      }),
+      prisma.userDevice.findMany({
+        where: { approved: true },
+        orderBy: { lastSeenAt: "desc" },
+        take: 200,
+        select: deviceSelect,
+      }),
+    ]);
+    const deviceRow = (d: (typeof pendingDevices)[number]) => ({
+      id: d.id,
+      name: `${d.user.lastName} ${d.user.firstName}`,
+      login: d.user.login,
+      device: d.device,
+      os: d.os,
+      browser: d.browser,
+      ipCity: d.ipCity,
+      attempts: d.attempts,
+      firstSeenAt: d.firstSeenAt,
+      lastSeenAt: d.lastSeenAt,
+    });
+
     const people = users.map((u) => ({
       id: u.id,
       name: `${u.lastName} ${u.firstName}`,
@@ -118,6 +159,10 @@ export async function GET() {
           seh: u.seh,
         })),
         webhook,
+      },
+      devices: {
+        pending: pendingDevices.map(deviceRow),
+        trusted: trustedDevices.map(deviceRow),
       },
       logs: logs.map((l) => ({
         ...l,

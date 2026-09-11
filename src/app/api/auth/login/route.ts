@@ -7,6 +7,11 @@ import { getRequestInfo, type RequestInfo } from "@/lib/request-info";
 import { checkLock, MAX_ATTEMPTS, WINDOW_MIN } from "@/lib/login-guard";
 import { isSiteEnabled } from "@/lib/settings";
 import { alertSuperAdmins, suspicionOf } from "@/lib/security-alert";
+import {
+  checkDevice,
+  deviceIdFromCookie,
+  setDeviceCookie,
+} from "@/lib/device-guard";
 
 const schema = z.object({
   login: z.string().min(1, "Введите логин"),
@@ -109,6 +114,32 @@ export async function POST(req: Request) {
         ]);
       }
       throw new ApiError(401, "Неверный логин или пароль");
+    }
+
+    // ── Тот же логин с чужого телефона ──
+    //
+    // Пароль верный, но устройство не одобрено — не пускаем. Открытую сессию
+    // хозяина учётки на его обычном телефоне не трогаем: если это ложная
+    // тревога (почистил браузер), работа не встанет.
+    const deviceId = deviceIdFromCookie();
+    setDeviceCookie(deviceId);
+    const verdict = await checkDevice(user.id, deviceId, info, {
+      alwaysAllow: user.role.isSuperAdmin,
+    });
+    if (!verdict.allowed) {
+      await log(login, false, "new_device", info, gps, user.id);
+      if (verdict.firstAttempt) {
+        await alertSuperAdmins("device", [
+          `Xodim: <b>${user.lastName} ${user.firstName}</b> (${login})`,
+          `Yangi qurilma: ${[info.device, info.os, info.browser].filter(Boolean).join(" · ") || "noma'lum"}`,
+          `Qayerdan: ${where(info)}`,
+          "Kiritilmadi. Ruxsat berish — nazorat panelida.",
+        ]);
+      }
+      throw new ApiError(
+        403,
+        "Bu qurilmadan kirishga ruxsat yo'q. Administratorga murojaat qiling."
+      );
     }
 
     // ── Сайт выключен суперадмином ──

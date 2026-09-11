@@ -21,7 +21,7 @@ function tashkentHour(d: Date): number {
   return (d.getUTCHours() + TASHKENT_OFFSET_H) % 24;
 }
 
-export type AlertKind = "locked" | "foreign" | "night";
+export type AlertKind = "locked" | "foreign" | "night" | "device";
 
 /** Что в этом входе подозрительного. null — ничего, сообщать не о чем. */
 export function suspicionOf(
@@ -41,6 +41,7 @@ const TITLES: Record<AlertKind, string> = {
   locked: "🚫 Parol tanlanmoqda",
   foreign: "🌍 Chet eldan kirish",
   night: "🌙 Tunda kirish",
+  device: "📱 Boshqa qurilmadan kirish",
 };
 
 export async function alertSuperAdmins(
