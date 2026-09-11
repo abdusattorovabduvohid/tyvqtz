@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { apiFetch } from "@/lib/client";
 import { pushSupported, syncSubscription } from "@/lib/push-client";
-import { NOTIFICATIONS_ENABLED } from "@/lib/features";
+import { NOTIFICATIONS_UI_ENABLED } from "@/lib/features";
 
 // Тихо чинит подписку на уведомления. Ничего не рисует и ничего не спрашивает.
 //
@@ -21,7 +21,7 @@ const EVERY_MS = 6 * 60 * 60 * 1000;
 
 export function PushAutoHeal() {
   useEffect(() => {
-    if (!NOTIFICATIONS_ENABLED) return; // раздел выключен в features.ts
+    if (!NOTIFICATIONS_UI_ENABLED) return; // раздел выключен в features.ts
     if (process.env.NODE_ENV !== "production") return;
     if (!pushSupported()) return;
     if (Notification.permission !== "granted") return;

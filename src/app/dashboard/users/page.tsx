@@ -38,13 +38,13 @@ import { useCan, useUser } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
 import { revealDelay } from "@/lib/anim";
-import { NOTIFICATIONS_ENABLED } from "@/lib/features";
+import { NOTIFICATIONS_UI_ENABLED } from "@/lib/features";
 import { UserFormModal, type UserRow } from "@/components/UserFormModal";
 
 
 // С колонкой уведомлений строка не помещается в телефон: пусть таблица
 // скроллится вбок, а не давит текст в столбик.
-const BASE_TABLE_WIDTH = NOTIFICATIONS_ENABLED ? 840 : 680;
+const BASE_TABLE_WIDTH = NOTIFICATIONS_UI_ENABLED ? 840 : 680;
 
 export default function UsersPage() {
   const can = useCan();
@@ -163,7 +163,7 @@ export default function UsersPage() {
   const tableMinWidth = BASE_TABLE_WIDTH + (canSeePasswords ? 150 : 0);
   // user, login, role, status, кнопки + необязательные пароль и уведомления
   const colCount =
-    5 + (canSeePasswords ? 1 : 0) + (NOTIFICATIONS_ENABLED ? 1 : 0);
+    5 + (canSeePasswords ? 1 : 0) + (NOTIFICATIONS_UI_ENABLED ? 1 : 0);
 
   // Люди, заведённые до появления открытого пароля: в базе только хеш,
   // вытащить из него исходный пароль нельзя — придётся задать новый.
@@ -213,7 +213,7 @@ export default function UsersPage() {
             w={280}
           />
           <Group gap="sm">
-            {NOTIFICATIONS_ENABLED && noTelegram > 0 && (
+            {NOTIFICATIONS_UI_ENABLED && noTelegram > 0 && (
               <Badge variant="light" color="red">
                 {t("users.tgMissing", { n: noTelegram })}
               </Badge>
@@ -319,7 +319,7 @@ export default function UsersPage() {
                     <Table.Th>{t("users.col.password")}</Table.Th>
                   )}
                   <Table.Th>{t("users.col.role")}</Table.Th>
-                  {NOTIFICATIONS_ENABLED && (
+                  {NOTIFICATIONS_UI_ENABLED && (
                     <Table.Th>{t("users.col.notify")}</Table.Th>
                   )}
                   <Table.Th>{t("users.col.status")}</Table.Th>
@@ -409,7 +409,7 @@ export default function UsersPage() {
                         {/* Кто подключил телеграм. Нужно на разборах: сотрудник
                             говорит «мне не сообщили», а видно, что он сам не
                             подключился — уведомлению просто некуда было прийти. */}
-                        {NOTIFICATIONS_ENABLED && (
+                        {NOTIFICATIONS_UI_ENABLED && (
                           <Table.Td>
                             <Group gap={6} wrap="nowrap">
                               {u.telegramLinked ? (

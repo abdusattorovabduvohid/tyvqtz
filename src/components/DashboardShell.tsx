@@ -32,7 +32,7 @@ import {
 import { apiFetch } from "@/lib/client";
 import { UserProvider, type ClientUser } from "./UserContext";
 import { PushAutoHeal } from "./PushAutoHeal";
-import { NOTIFICATIONS_ENABLED } from "@/lib/features";
+import { NOTIFICATIONS_UI_ENABLED } from "@/lib/features";
 import { useI18n } from "./I18nProvider";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Logo } from "./Logo";
@@ -86,7 +86,7 @@ export function DashboardShell({
     { key: "dashboard", label: "", href: "/dashboard" },
     { key: "my-stages", label: "", href: "/dashboard/my-stages" },
     ...nav,
-    ...(NOTIFICATIONS_ENABLED
+    ...(NOTIFICATIONS_UI_ENABLED
       ? [{ key: "notifications", label: "", href: "/dashboard/notifications" }]
       : []),
   ];
@@ -174,7 +174,7 @@ export function DashboardShell({
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Label>{fullName}</Menu.Label>
-                {NOTIFICATIONS_ENABLED && (
+                {NOTIFICATIONS_UI_ENABLED && (
                   <Menu.Item
                     component={Link}
                     href="/dashboard/notifications"
