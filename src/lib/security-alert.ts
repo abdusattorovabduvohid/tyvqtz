@@ -12,16 +12,25 @@ import { prisma } from "./db";
 import { telegramSend } from "./notify";
 import type { RequestInfo } from "./request-info";
 
-// Завод живёт по Ташкенту (UTC+5), сервер — по UTC.
-const TASHKENT_OFFSET_H = 5;
-const NIGHT_FROM = 0;
-const NIGHT_TO = 5;
+// Завод живёт по Ташкенту (UTC+5, без перехода на летнее время), сервер —
+// по UTC.
+const TASHKENT_OFFSET_MIN = 5 * 60;
 
-function tashkentHour(d: Date): number {
-  return (d.getUTCHours() + TASHKENT_OFFSET_H) % 24;
+// Рабочее время: будни с 08:00 до 17:10. Суббота и воскресенье — выходные
+// целиком. Вход вне этих рамок сам по себе не преступление, но суперадмин
+// хочет знать, кто сидит в системе после смены.
+const WORK_FROM_MIN = 8 * 60;
+const WORK_TO_MIN = 17 * 60 + 10;
+
+export function isWorkTime(d: Date): boolean {
+  const t = new Date(d.getTime() + TASHKENT_OFFSET_MIN * 60_000);
+  const day = t.getUTCDay(); // 0 — воскресенье, 6 — суббота
+  if (day === 0 || day === 6) return false;
+  const min = t.getUTCHours() * 60 + t.getUTCMinutes();
+  return min >= WORK_FROM_MIN && min < WORK_TO_MIN;
 }
 
-export type AlertKind = "locked" | "foreign" | "night" | "device";
+export type AlertKind = "locked" | "foreign" | "offhours" | "device";
 
 /** Что в этом входе подозрительного. null — ничего, сообщать не о чем. */
 export function suspicionOf(
@@ -32,15 +41,14 @@ export function suspicionOf(
   // Страну знаем только на Vercel; на своём сервере заголовка нет и
   // проверка просто не срабатывает — это лучше, чем ложные тревоги.
   if (info.ipCountry && info.ipCountry !== "UZ") return "foreign";
-  const h = tashkentHour(opts.at ?? new Date());
-  if (h >= NIGHT_FROM && h < NIGHT_TO) return "night";
+  if (!isWorkTime(opts.at ?? new Date())) return "offhours";
   return null;
 }
 
 const TITLES: Record<AlertKind, string> = {
   locked: "🚫 Parol tanlanmoqda",
   foreign: "🌍 Chet eldan kirish",
-  night: "🌙 Tunda kirish",
+  offhours: "🕐 Ish vaqtidan tashqari kirish",
   device: "📱 Boshqa qurilmadan kirish",
 };
 
