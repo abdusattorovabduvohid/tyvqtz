@@ -152,6 +152,7 @@ const ru: Dict = {
   "users.create": "Создать пользователя",
   "users.col.user": "Пользователь",
   "users.col.login": "Логин",
+  "users.col.password": "Пароль",
   "users.col.role": "Роль",
   "users.col.notify": "Уведомления",
   "users.tgOn": "Телеграм",
@@ -183,6 +184,13 @@ const ru: Dict = {
     "Текущий пароль. Измените — по старому вход закроется",
   "users.dropzone": "Перетащите или выберите фото",
   "users.selectRole": "Выберите роль",
+  "users.pwShow": "Показать пароли",
+  "users.pwHide": "Скрыть пароли",
+  "users.pwUnknown": "не задан",
+  "users.pwMissing": "Без пароля: {n}",
+  "users.copyList": "Скопировать список",
+  "users.copyHint":
+    "Копируется то, что видно в списке: сузьте поиском, если нужна часть",
 
   // роли
   "roles.title": "Роли",
@@ -724,6 +732,7 @@ const uz: Dict = {
   "users.create": "Foydalanuvchi yaratish",
   "users.col.user": "Foydalanuvchi",
   "users.col.login": "Login",
+  "users.col.password": "Parol",
   "users.col.role": "Rol",
   "users.col.notify": "Bildirishnoma",
   "users.tgOn": "Telegram",
@@ -755,6 +764,13 @@ const uz: Dict = {
     "Hozirgi parol. O‘zgartirsangiz, eskisi bilan kirib bo‘lmaydi",
   "users.dropzone": "Suratni torting yoki tanlang",
   "users.selectRole": "Rolni tanlang",
+  "users.pwShow": "Parollarni ko‘rsatish",
+  "users.pwHide": "Parollarni yashirish",
+  "users.pwUnknown": "berilmagan",
+  "users.pwMissing": "Parolsiz: {n}",
+  "users.copyList": "Ro‘yxatni nusxalash",
+  "users.copyHint":
+    "Ro‘yxatda ko‘rinib turgani nusxalanadi: bir qismi kerak bo‘lsa, qidiruvdan foydalaning",
 
   "roles.title": "Rollar",
   "roles.subtitle": "Rollar ro‘yxati va ruxsatlarni sozlash",

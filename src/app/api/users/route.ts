@@ -3,7 +3,6 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
-import { can } from "@/lib/permissions";
 
 const createSchema = z.object({
   login: z.string().min(3, "Логин минимум 3 символа"),
@@ -43,16 +42,17 @@ export async function GET() {
         _count: { select: { pushSubscriptions: true } },
       },
     });
-    // Открытый пароль видит только тот, кто вправе редактировать людей:
-    // права «просмотр» для этого мало.
-    const canEdit = can(me.role, "users", "update");
+    // Открытый пароль уходит только супер-админу. Управляющему людьми
+    // хватает права задать новый пароль — видеть чужие ему незачем,
+    // а в списке они теперь лежат все разом.
+    const canSeePassword = me.role.isSuperAdmin;
     const data = users.map(
       ({ passwordPlain, telegramChatId, _count, ...u }) => ({
         ...u,
         // сам chat id наружу не отдаём — по нему бот пишет в личку
         telegramLinked: Boolean(telegramChatId),
         pushDevices: _count.pushSubscriptions,
-        ...(canEdit ? { passwordPlain } : {}),
+        ...(canSeePassword ? { passwordPlain } : {}),
       })
     );
     return NextResponse.json({ users: data });

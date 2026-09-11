@@ -14,6 +14,8 @@ import {
   Center,
   Loader,
   TextInput,
+  CopyButton,
+  Tooltip,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -25,10 +27,14 @@ import {
   IconSearch,
   IconBrandTelegram,
   IconDeviceMobile,
+  IconEye,
+  IconEyeOff,
+  IconCopy,
+  IconCheck,
 } from "@tabler/icons-react";
 import { apiFetch, showError } from "@/lib/client";
 import { Page, PageHeader } from "@/components/Page";
-import { useCan } from "@/components/UserContext";
+import { useCan, useUser } from "@/components/UserContext";
 import { useI18n } from "@/components/I18nProvider";
 import { pickName } from "@/lib/i18n/translations";
 import { revealDelay } from "@/lib/anim";
@@ -38,10 +44,11 @@ import { UserFormModal, type UserRow } from "@/components/UserFormModal";
 
 // С колонкой уведомлений строка не помещается в телефон: пусть таблица
 // скроллится вбок, а не давит текст в столбик.
-const TABLE_MIN_WIDTH = NOTIFICATIONS_ENABLED ? 840 : 680;
+const BASE_TABLE_WIDTH = NOTIFICATIONS_ENABLED ? 840 : 680;
 
 export default function UsersPage() {
   const can = useCan();
+  const me = useUser();
   const { t, lang } = useI18n();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<{ value: string; label: string }[]>([]);
@@ -49,6 +56,9 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
+  // Пароли открыты по умолчанию — ради этого колонку и завели. Кнопка-глаз
+  // нужна на минуту, когда к столу подошли: прятать по одному бессмысленно.
+  const [showPasswords, setShowPasswords] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +126,27 @@ export default function UsersPage() {
       .includes(search.toLowerCase())
   );
 
+  // Открытый пароль сервер отдаёт только супер-админу, остальным колонку
+  // нечем заполнять — её и не рисуем.
+  const canSeePasswords = me.role.isSuperAdmin;
+  const tableMinWidth = BASE_TABLE_WIDTH + (canSeePasswords ? 150 : 0);
+
+  // Люди, заведённые до появления открытого пароля: в базе только хеш,
+  // вытащить из него исходный пароль нельзя — придётся задать новый.
+  const noPassword = canSeePasswords
+    ? users.filter((u) => u.isActive && !u.passwordPlain).length
+    : 0;
+
+  // Копируется ровно то, что на экране: сузили поиском — уйдёт часть списка.
+  const listText = filtered
+    .map(
+      (u, i) =>
+        `${i + 1}. ${u.lastName} ${u.firstName} — ${u.login} / ${
+          u.passwordPlain || t("users.pwUnknown")
+        }`
+    )
+    .join("\n");
+
   return (
     <Page>
       <PageHeader
@@ -145,6 +176,55 @@ export default function UsersPage() {
                 {t("users.tgMissing", { n: noTelegram })}
               </Badge>
             )}
+            {noPassword > 0 && (
+              <Badge variant="light" color="orange">
+                {t("users.pwMissing", { n: noPassword })}
+              </Badge>
+            )}
+            {canSeePasswords && (
+              <>
+                <Tooltip
+                  label={showPasswords ? t("users.pwHide") : t("users.pwShow")}
+                >
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    onClick={() => setShowPasswords((v) => !v)}
+                    aria-label={
+                      showPasswords ? t("users.pwHide") : t("users.pwShow")
+                    }
+                  >
+                    {showPasswords ? (
+                      <IconEyeOff size={18} />
+                    ) : (
+                      <IconEye size={18} />
+                    )}
+                  </ActionIcon>
+                </Tooltip>
+                <CopyButton value={listText}>
+                  {({ copied, copy }) => (
+                    <Tooltip label={t("users.copyHint")} multiline w={260}>
+                      <Button
+                        variant="light"
+                        size="compact-sm"
+                        color={copied ? "teal" : undefined}
+                        leftSection={
+                          copied ? (
+                            <IconCheck size={16} />
+                          ) : (
+                            <IconCopy size={16} />
+                          )
+                        }
+                        onClick={copy}
+                        disabled={filtered.length === 0}
+                      >
+                        {copied ? t("common.copied") : t("users.copyList")}
+                      </Button>
+                    </Tooltip>
+                  )}
+                </CopyButton>
+              </>
+            )}
             <Text size="sm" c="dimmed">
               {t("common.total")}: {filtered.length}
             </Text>
@@ -160,12 +240,15 @@ export default function UsersPage() {
             <Text c="dimmed">{t("users.empty")}</Text>
           </Center>
         ) : (
-          <Table.ScrollContainer minWidth={TABLE_MIN_WIDTH}>
+          <Table.ScrollContainer minWidth={tableMinWidth}>
             <Table verticalSpacing="sm" highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("users.col.user")}</Table.Th>
                   <Table.Th>{t("users.col.login")}</Table.Th>
+                  {canSeePasswords && (
+                    <Table.Th>{t("users.col.password")}</Table.Th>
+                  )}
                   <Table.Th>{t("users.col.role")}</Table.Th>
                   {NOTIFICATIONS_ENABLED && (
                     <Table.Th>{t("users.col.notify")}</Table.Th>
@@ -213,6 +296,21 @@ export default function UsersPage() {
                     <Table.Td>
                       <Text size="sm">{u.login}</Text>
                     </Table.Td>
+                    {/* Пароль рядом с логином: раньше его приходилось
+                        открывать в карточке каждого человека по очереди. */}
+                    {canSeePasswords && (
+                      <Table.Td>
+                        {u.passwordPlain ? (
+                          <Text size="sm" ff="monospace">
+                            {showPasswords ? u.passwordPlain : "••••••"}
+                          </Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            {t("users.pwUnknown")}
+                          </Text>
+                        )}
+                      </Table.Td>
+                    )}
                     <Table.Td>
                       <Badge variant="light" color="blue">
                         {pickName(u.role, lang)}
