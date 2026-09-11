@@ -188,6 +188,7 @@ const ru: Dict = {
   "users.pwHide": "Скрыть пароли",
   "users.pwUnknown": "не задан",
   "users.pwMissing": "Без пароля: {n}",
+  "users.filterAll": "Все",
   "users.copyList": "Скопировать список",
   "users.copyHint":
     "Копируется то, что видно в списке: сузьте поиском, если нужна часть",
@@ -768,6 +769,7 @@ const uz: Dict = {
   "users.pwHide": "Parollarni yashirish",
   "users.pwUnknown": "berilmagan",
   "users.pwMissing": "Parolsiz: {n}",
+  "users.filterAll": "Hammasi",
   "users.copyList": "Ro‘yxatni nusxalash",
   "users.copyHint":
     "Ro‘yxatda ko‘rinib turgani nusxalanadi: bir qismi kerak bo‘lsa, qidiruvdan foydalaning",
