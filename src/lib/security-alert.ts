@@ -30,7 +30,19 @@ export function isWorkTime(d: Date): boolean {
   return min >= WORK_FROM_MIN && min < WORK_TO_MIN;
 }
 
-export type AlertKind = "locked" | "foreign" | "offhours" | "device";
+/** Начало текущих ташкентских суток, выраженное в UTC. */
+export function tashkentDayStart(d: Date): Date {
+  const t = new Date(d.getTime() + TASHKENT_OFFSET_MIN * 60_000);
+  t.setUTCHours(0, 0, 0, 0);
+  return new Date(t.getTime() - TASHKENT_OFFSET_MIN * 60_000);
+}
+
+export type AlertKind =
+  | "locked"
+  | "foreign"
+  | "offhours"
+  | "activity"
+  | "device";
 
 /** Что в этом входе подозрительного. null — ничего, сообщать не о чем. */
 export function suspicionOf(
@@ -49,6 +61,7 @@ const TITLES: Record<AlertKind, string> = {
   locked: "🚫 Parol tanlanmoqda",
   foreign: "🌍 Chet eldan kirish",
   offhours: "🕐 Ish vaqtidan tashqari kirish",
+  activity: "🕐 Ish vaqtidan tashqari ishlamoqda",
   device: "📱 Boshqa qurilmadan kirish",
 };
 

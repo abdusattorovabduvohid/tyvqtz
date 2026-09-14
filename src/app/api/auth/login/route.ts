@@ -165,6 +165,14 @@ export async function POST(req: Request) {
         `Qayerdan: ${where(info)}`,
         `Qurilma: ${[info.device, info.os, info.browser].filter(Boolean).join(" · ") || "noma'lum"}`,
       ]);
+      // О работе вне смены уже сообщили этим же сообщением: закрываем сутки,
+      // чтобы через минуту не прилетела вдогонку тревога об активности.
+      if (kind === "offhours") {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { offHoursAlertAt: new Date() },
+        });
+      }
     }
 
     await setSessionCookie(user.id, user.tokenVersion);

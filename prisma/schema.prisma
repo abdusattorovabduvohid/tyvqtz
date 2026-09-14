@@ -63,6 +63,9 @@ model User {
   // и все выданные этому человеку токены разом становятся негодными.
   // Отдельная таблица сессий для этого не нужна.
   tokenVersion Int       @default(0)
+  // Когда последний раз сообщали суперадмину, что человек работает в
+  // системе вне смены. Не чаще раза в сутки — см. lib/off-hours.ts.
+  offHoursAlertAt DateTime?
 
   loginLogs              LoginLog[]
   devices                UserDevice[]

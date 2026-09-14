@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { parsePermissions, type SessionRole } from "./permissions";
 import { touch } from "./presence";
+import { reportOffHoursActivity } from "./off-hours";
 
 const COOKIE_NAME = "session";
 const secret = new TextEncoder().encode(
@@ -87,6 +88,10 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
   // Отметка «был в сети». Внутри стоит троттлинг, лишних записей не будет.
   await touch(user.id);
+
+  // Работа вне смены. В рабочее время это две проверки в памяти и ни одного
+  // запроса в базу, так что на обычный запрос не влияет.
+  await reportOffHoursActivity(user);
 
   return {
     id: user.id,
