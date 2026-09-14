@@ -30,7 +30,7 @@ export interface UserRow {
   // текущий пароль открытым текстом; у старых пользователей его нет
   passwordPlain?: string | null;
   isActive: boolean;
-  role: { id: string; nameRu: string; nameUz: string | null };
+  role: { id: string; nameRu: string | null; nameUz: string };
   // подключил ли человек телеграм и сколько устройств ловят web push
   telegramLinked?: boolean;
   telegramUsername?: string | null;

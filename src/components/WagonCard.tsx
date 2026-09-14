@@ -15,12 +15,15 @@ import { pickName } from "@/lib/i18n/translations";
 import { formatDateTime, formatDate } from "@/lib/format";
 import { revealDelay } from "@/lib/anim";
 
+// Обязательное название — узбекское: русское в форме необязательно и часто
+// пустое. Раньше здесь стояло наоборот, но данные из базы никто не сверял
+// с этим типом — ответ /api/wagons был нетипизированным.
 export interface WagonListItem {
   id: string;
-  nameRu: string;
-  nameUz: string | null;
+  nameRu: string | null;
+  nameUz: string;
   number: string;
-  wagonType: { nameRu: string; nameUz: string | null };
+  wagonType: { nameRu: string | null; nameUz: string };
   status: "pending" | "in_progress" | "done" | "blocked";
   creationStatus: "pending" | "approved" | "rejected";
   progress: { done: number; total: number };
@@ -43,7 +46,7 @@ export interface WagonListItem {
     middleName: string | null;
     photo: string | null;
     seh: string | null;
-    role: { nameRu: string; nameUz: string | null } | null;
+    role: { nameRu: string | null; nameUz: string } | null;
     decision: "pending" | "approved" | "denied";
     decidedAt: string | null;
   }[];

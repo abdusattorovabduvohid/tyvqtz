@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { requireUser, handleError } from "@/lib/api";
+import { listRoleOptions } from "@/lib/options";
 
 // Список ролей (id + название) для выпадающих списков.
 // Доступен любому авторизованному пользователю.
 export async function GET() {
   try {
     await requireUser();
-    const roles = await prisma.role.findMany({
-      orderBy: { nameRu: "asc" },
-      select: { id: true, nameRu: true, nameUz: true },
-    });
-    return NextResponse.json({ roles });
+    return NextResponse.json({ roles: await listRoleOptions() });
   } catch (err) {
     return handleError(err);
   }

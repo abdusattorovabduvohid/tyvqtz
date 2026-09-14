@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
-import { computeWagonStatus } from "@/lib/wagon";
-import { wagonSchedule, stageWorkdays, businessDaysUntil } from "@/lib/format";
+import { listWagons } from "@/lib/wagons-list";
 import { notifyUsers, notifyUsersAndGroup } from "@/lib/notify";
 
 const createSchema = z.object({
@@ -36,172 +35,10 @@ const createSchema = z.object({
     .min(1, "Выберите хотя бы одного согласующего создание"),
 });
 
-// На чём вагон реально стоит: сначала заблокированная позиция, потом идущая,
-// иначе первая незакрытая. Отдельной функцией, потому что нужна дважды:
-// сначала чтобы понять, по каким позициям догружать подробности, потом при
-// сборке ответа.
-function currentIndex(stages: { status: string }[]): number {
-  const blocked = stages.findIndex((s) => s.status === "blocked");
-  if (blocked >= 0) return blocked;
-  const running = stages.findIndex((s) => s.status === "in_progress");
-  if (running >= 0) return running;
-  return stages.findIndex((s) => s.status !== "done");
-}
-
-function groupByStage<T extends { wagonStageId: string }>(rows: T[]) {
-  const map = new Map<string, T[]>();
-  for (const row of rows) {
-    const list = map.get(row.wagonStageId);
-    if (list) list.push(row);
-    else map.set(row.wagonStageId, [row]);
-  }
-  return map;
-}
-
 export async function GET() {
   try {
     await requirePermission("wagons", "view");
-
-    // Первым запросом — только то, что нужно по всем позициям: по ним
-    // считаются прогресс, дни и план дат. Работы и ответственных раньше
-    // тянули на каждую позицию каждого вагона, а показывается в списке
-    // одна текущая: на десяти позициях это уже лишние сотни строк, которые
-    // едут на телефон по заводскому интернету.
-    const wagons = await prisma.wagon.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        wagonType: { select: { id: true, nameRu: true, nameUz: true } },
-        stages: {
-          orderBy: { number: "asc" },
-          select: {
-            id: true,
-            number: true,
-            nameRu: true,
-            nameUz: true,
-            status: true,
-            note: true,
-            workerCount: true,
-            durationSeconds: true,
-          },
-        },
-      },
-    });
-
-    // Подробности — только по текущим позициям, двумя запросами на весь
-    // список, а не по запросу на каждый вагон.
-    const currentIds = wagons
-      .map((w) => w.stages[currentIndex(w.stages)]?.id)
-      .filter((id): id is string => Boolean(id));
-
-    const [works, assignments] = currentIds.length
-      ? await Promise.all([
-          // работы позиции — из них берём суммарное число рабочих и цеха
-          prisma.wagonStageWork.findMany({
-            where: { wagonStageId: { in: currentIds } },
-            orderBy: { number: "asc" },
-            select: { wagonStageId: true, workerCount: true, seh: true },
-          }),
-          prisma.wagonStageAssignment.findMany({
-            where: { wagonStageId: { in: currentIds } },
-            orderBy: { order: "asc" },
-            select: {
-              wagonStageId: true,
-              decision: true,
-              comment: true,
-              decidedAt: true,
-              user: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  middleName: true,
-                  photo: true,
-                  seh: true,
-                  role: { select: { nameRu: true, nameUz: true } },
-                },
-              },
-            },
-          }),
-        ])
-      : [[], []];
-
-    const worksByStage = groupByStage(works);
-    const assignsByStage = groupByStage(assignments);
-
-    const data = wagons.map((w) => {
-      const total = w.stages.length;
-      const done = w.stages.filter((s) => s.status === "done").length;
-
-      // Дни: этап занимает целое число рабочих дней (8 ч = 1 день).
-      const daysTotal = w.stages.reduce((a, s) => a + stageWorkdays(s.durationSeconds), 0);
-      const daysDone = w.stages
-        .filter((s) => s.status === "done")
-        .reduce((a, s) => a + stageWorkdays(s.durationSeconds), 0);
-
-      // План дат считаем от «Ish boshlanish sanasi», а если не задана — от создания.
-      const start = w.plannedStart ?? w.createdAt;
-      const { plan, end } = wagonSchedule(start, w.stages.map((s) => s.durationSeconds));
-      // Дата сдачи: заданная вручную либо конец плана этапов.
-      const deadline = w.plannedEnd ?? end;
-      const daysLeft = businessDaysUntil(deadline);
-
-      const idx = currentIndex(w.stages);
-      const current = idx >= 0 ? w.stages[idx] : null;
-      const curPlan = idx >= 0 ? plan[idx] : null;
-      const curWorks = current ? (worksByStage.get(current.id) ?? []) : [];
-      const curAssigns = current ? (assignsByStage.get(current.id) ?? []) : [];
-      const denier = curAssigns.find((a) => a.decision === "denied");
-
-      return {
-        id: w.id,
-        nameRu: w.nameRu,
-        nameUz: w.nameUz,
-        number: w.number,
-        wagonType: w.wagonType,
-        status: computeWagonStatus(w.stages),
-        creationStatus: w.creationStatus,
-        progress: { done, total },
-        days: { done: daysDone, total: daysTotal },
-        start,
-        deadline,
-        daysLeft,
-        current: current
-          ? {
-              number: current.number,
-              nameRu: current.nameRu,
-              nameUz: current.nameUz,
-              status: current.status,
-              note: current.note,
-              // работы позиции идут параллельно по цехам, поэтому людей на позиции —
-              // сумма по работам; своё поле позиции берём как запасное
-              workerCount:
-                curWorks.reduce((a, w) => a + (w.workerCount ?? 0), 0) ||
-                current.workerCount,
-              sehs: [...new Set(curWorks.map((w) => w.seh).filter(Boolean))] as string[],
-              // план дат текущего этапа
-              plannedStart: curPlan?.start ?? null,
-              plannedEnd: curPlan?.end ?? null,
-            }
-          : null,
-        // с решением и датой — на карточке видно, кто уже поставил галочку
-        assignees: curAssigns.map((a) => ({
-          ...a.user,
-          decision: a.decision,
-          decidedAt: a.decidedAt,
-        })),
-        deniedBy: denier
-          ? {
-              name: [denier.user.lastName, denier.user.firstName]
-                .filter(Boolean)
-                .join(" "),
-              comment: denier.comment,
-            }
-          : null,
-        createdAt: w.createdAt,
-      };
-    });
-
-    return NextResponse.json({ wagons: data });
+    return NextResponse.json({ wagons: await listWagons() });
   } catch (err) {
     return handleError(err);
   }
