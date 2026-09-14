@@ -2,6 +2,25 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { handleError, requireSuperAdmin } from "@/lib/api";
+import { DEVICE_SELECT, deviceRow } from "@/lib/device-guard";
+
+// Список одобренных устройств. Отдельно от /api/control намеренно: панель
+// обновляется раз в 30 секунд, а этот список нужен раз в месяц — когда
+// человек сменил телефон и старый надо забыть.
+export async function GET() {
+  try {
+    await requireSuperAdmin();
+    const devices = await prisma.userDevice.findMany({
+      where: { approved: true },
+      orderBy: { lastSeenAt: "desc" },
+      take: 200,
+      select: DEVICE_SELECT,
+    });
+    return NextResponse.json({ devices: devices.map(deviceRow) });
+  } catch (err) {
+    return handleError(err);
+  }
+}
 
 const schema = z.object({
   id: z.string().min(1),

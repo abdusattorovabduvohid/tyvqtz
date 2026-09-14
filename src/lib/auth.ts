@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
@@ -61,7 +62,13 @@ export function clearSessionCookie() {
 }
 
 // Текущий пользователь сессии с актуальными правами роли (из БД).
-export async function getCurrentUser(): Promise<SessionUser | null> {
+//
+// Обёрнут в cache(): за один запрос эту функцию зовут минимум дважды —
+// layout дашборда и сама страница (а в API-роутах ещё и requireUser). Без
+// кэша это два одинаковых SELECT и две отметки присутствия на каждый
+// переход. cache() живёт ровно один запрос, поэтому свежесть прав и отзыв
+// сессии не страдают.
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<SessionUser | null> {
   const token = cookies().get(COOKIE_NAME)?.value;
   if (!token) return null;
 
@@ -107,4 +114,4 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       permissions: parsePermissions(user.role.permissions),
     },
   };
-}
+});

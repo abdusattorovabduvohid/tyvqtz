@@ -14,13 +14,6 @@ export interface SectionDef {
   actions: Action[];
 }
 
-export const ACTION_LABELS: Record<Action, string> = {
-  view: "Просмотр",
-  create: "Создание",
-  update: "Изменение",
-  delete: "Удаление",
-};
-
 export const SECTIONS: SectionDef[] = [
   {
     key: "users",

@@ -52,25 +52,6 @@ export function computeApproval(assignments: AssignmentLike[]) {
   };
 }
 
-// Итоговый статус этапа с учётом согласований и таймера.
-// pending | awaiting (ждёт согласований) | ready (все согласовали) |
-// blocked (есть отказ) | in_progress | overdue | done
-export function resolveStageStatus(
-  storedStatus: string,
-  assignments: AssignmentLike[],
-  timerOverdue: boolean
-): string {
-  if (storedStatus === "done") return "done";
-  if (storedStatus === "blocked") return "blocked";
-  if (storedStatus === "in_progress") return timerOverdue ? "overdue" : "in_progress";
-  // pending
-  const ap = computeApproval(assignments);
-  if (ap.anyDenied) return "blocked";
-  if (ap.total === 0) return "pending"; // исполнители не назначены
-  if (ap.allApproved) return "ready";
-  return "awaiting"; // ждёт разрешений
-}
-
 // Общий статус вагона по его этапам.
 export function computeWagonStatus(
   stages: { status: string }[]

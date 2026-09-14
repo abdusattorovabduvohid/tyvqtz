@@ -1,21 +1,3 @@
-import { translate, type Lang, DEFAULT_LANG } from "./i18n/translations";
-
-// Человекочитаемая длительность из секунд: "1 ч 30 мин" / "1 soat 30 daqiqa".
-export function formatDuration(
-  totalSeconds: number,
-  lang: Lang = DEFAULT_LANG
-): string {
-  if (totalSeconds <= 0) return translate(lang, "dur.zero");
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  const parts: string[] = [];
-  if (h) parts.push(`${h} ${translate(lang, "dur.h")}`);
-  if (m) parts.push(`${m} ${translate(lang, "dur.m")}`);
-  if (s) parts.push(`${s} ${translate(lang, "dur.s")}`);
-  return parts.join(" ");
-}
-
 // Часов в рабочем дне (08:00–17:00). На нём держится расчёт дней.
 export const HOURS_PER_DAY = 8;
 

@@ -78,7 +78,9 @@ interface ControlData {
   devices: {
     // попытки войти под чужой учёткой — ждут решения суперадмина
     pending: DeviceRow[];
-    trusted: DeviceRow[];
+    // одобренных бывает полсотни, и нужны они редко: сам список приходит
+    // по GET /api/control/devices, когда суперадмин его раскроет
+    trustedCount: number;
   };
   lastBackupAt: string | null;
   onlineMin: number;
@@ -137,6 +139,9 @@ export function ControlPanel({ meId }: { meId: string }) {
   const { t } = useI18n();
   const [data, setData] = useState<ControlData | null>(null);
   const [busy, setBusy] = useState(false);
+  // Список одобренных устройств: null — ещё не раскрывали, грузим по нажатию.
+  const [trusted, setTrusted] = useState<DeviceRow[] | null>(null);
+  const [trustedBusy, setTrustedBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -192,12 +197,31 @@ export function ControlPanel({ meId }: { meId: string }) {
     });
   }
 
+  async function loadTrusted() {
+    setTrustedBusy(true);
+    try {
+      const r = await apiFetch<{ devices: DeviceRow[] }>("/api/control/devices");
+      setTrusted(r.devices);
+    } catch (e) {
+      showError(e);
+    } finally {
+      setTrustedBusy(false);
+    }
+  }
+
+  function toggleTrusted() {
+    if (trusted) setTrusted(null);
+    else loadTrusted();
+  }
+
   async function deviceAction(d: DeviceRow, action: "approve" | "remove") {
     try {
       await apiFetch("/api/control/devices", {
         method: "POST",
         body: JSON.stringify({ id: d.id, action }),
       });
+      // Список раскрыт — он тоже мог измениться этим же нажатием.
+      if (trusted) await loadTrusted();
       notifications.show({
         color: action === "approve" ? "teal" : "orange",
         message:
@@ -470,19 +494,23 @@ export function ControlPanel({ meId }: { meId: string }) {
               </Stack>
             )}
 
-            {/* Одобренных десятки: прячем под раскрывашку, нужна она редко —
-                когда человек сменил телефон и старый надо забыть. */}
-            {data.devices.trusted.length > 0 && (
-              <details style={{ marginTop: 8 }}>
-                <summary style={{ cursor: "pointer" }}>
-                  <Text span size="xs" c="steel.7" fw={600}>
-                    {t("control.devicesTrusted", {
-                      n: data.devices.trusted.length,
-                    })}
-                  </Text>
-                </summary>
+            {/* Одобренных десятки, а нужны они редко — когда человек сменил
+                телефон и старый надо забыть. Поэтому список не едет с каждым
+                обновлением панели, а грузится по нажатию. */}
+            {data.devices.trustedCount > 0 && (
+              <Box mt={8}>
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  loading={trustedBusy}
+                  onClick={toggleTrusted}
+                >
+                  {t("control.devicesTrusted", { n: data.devices.trustedCount })}
+                  {" · "}
+                  {trusted ? t("control.devicesHide") : t("control.devicesShow")}
+                </Button>
                 <Stack gap={0} mt={4}>
-                  {data.devices.trusted.map((d) => (
+                  {(trusted ?? []).map((d) => (
                     <Group
                       key={d.id}
                       justify="space-between"
@@ -511,7 +539,7 @@ export function ControlPanel({ meId }: { meId: string }) {
                     </Group>
                   ))}
                 </Stack>
-              </details>
+              </Box>
             )}
           </Box>
         </Group>

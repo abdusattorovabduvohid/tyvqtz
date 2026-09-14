@@ -32,6 +32,47 @@ export function setDeviceCookie(deviceId: string) {
   });
 }
 
+// Как устройство показывается в панели контроля. Держим рядом с самой
+// проверкой: и список ожидающих, и список одобренных строятся одинаково.
+export const DEVICE_SELECT = {
+  id: true,
+  device: true,
+  os: true,
+  browser: true,
+  ipCity: true,
+  attempts: true,
+  firstSeenAt: true,
+  lastSeenAt: true,
+  user: { select: { firstName: true, lastName: true, login: true } },
+} as const;
+
+interface DeviceWithUser {
+  id: string;
+  device: string | null;
+  os: string | null;
+  browser: string | null;
+  ipCity: string | null;
+  attempts: number;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+  user: { firstName: string; lastName: string; login: string };
+}
+
+export function deviceRow(d: DeviceWithUser) {
+  return {
+    id: d.id,
+    name: `${d.user.lastName} ${d.user.firstName}`,
+    login: d.user.login,
+    device: d.device,
+    os: d.os,
+    browser: d.browser,
+    ipCity: d.ipCity,
+    attempts: d.attempts,
+    firstSeenAt: d.firstSeenAt,
+    lastSeenAt: d.lastSeenAt,
+  };
+}
+
 export type DeviceVerdict =
   | { allowed: true }
   // firstAttempt — с этого устройства пробуют впервые: только тогда и пишем

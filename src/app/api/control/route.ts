@@ -5,6 +5,7 @@ import { presenceOf, ONLINE_MIN, IDLE_MIN } from "@/lib/presence";
 import { getSetting, isSiteEnabled, LAST_BACKUP_AT } from "@/lib/settings";
 import { NOTIFICATIONS_ENABLED } from "@/lib/features";
 import { telegramWebhookHealth } from "@/lib/notify";
+import { DEVICE_SELECT, deviceRow } from "@/lib/device-guard";
 
 // Всё, что показывает панель контроля, одним запросом: состояние сайта,
 // счётчики, кто в сети и последние входы. Отдельные эндпоинты на каждую
@@ -86,45 +87,19 @@ export async function GET() {
         ];
 
     // Устройства: неодобренные — это попытки войти под чужой учёткой, их
-    // показываем все. Одобренных десятки — отдаём, но панель прячет их
-    // под кнопку.
-    const deviceSelect = {
-      id: true,
-      device: true,
-      os: true,
-      browser: true,
-      ipCity: true,
-      attempts: true,
-      firstSeenAt: true,
-      lastSeenAt: true,
-      user: { select: { firstName: true, lastName: true, login: true } },
-    } as const;
-    const [pendingDevices, trustedDevices] = await Promise.all([
+    // показываем все. Одобренных — только счётчик: панель обновляется раз в
+    // 30 секунд, и возить полсотни строк, спрятанных под раскрывашкой, по
+    // заводскому интернету незачем. Список приходит по GET /api/control/devices,
+    // когда суперадмин её раскроет.
+    const [pendingDevices, trustedCount] = await Promise.all([
       prisma.userDevice.findMany({
         where: { approved: false },
         orderBy: { lastSeenAt: "desc" },
         take: 50,
-        select: deviceSelect,
+        select: DEVICE_SELECT,
       }),
-      prisma.userDevice.findMany({
-        where: { approved: true },
-        orderBy: { lastSeenAt: "desc" },
-        take: 200,
-        select: deviceSelect,
-      }),
+      prisma.userDevice.count({ where: { approved: true } }),
     ]);
-    const deviceRow = (d: (typeof pendingDevices)[number]) => ({
-      id: d.id,
-      name: `${d.user.lastName} ${d.user.firstName}`,
-      login: d.user.login,
-      device: d.device,
-      os: d.os,
-      browser: d.browser,
-      ipCity: d.ipCity,
-      attempts: d.attempts,
-      firstSeenAt: d.firstSeenAt,
-      lastSeenAt: d.lastSeenAt,
-    });
 
     const people = users.map((u) => ({
       id: u.id,
@@ -162,7 +137,7 @@ export async function GET() {
       },
       devices: {
         pending: pendingDevices.map(deviceRow),
-        trusted: trustedDevices.map(deviceRow),
+        trustedCount,
       },
       logs: logs.map((l) => ({
         ...l,

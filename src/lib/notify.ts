@@ -452,11 +452,6 @@ export function personName(u: {
   return `${u.lastName} ${u.firstName}`.trim();
 }
 
-// «Вагон №61-107» — как его называют в цехах.
-export function wagonLabel(w: { number: string }): string {
-  return `№${w.number}`;
-}
-
 // ─────────────────────── Разбор очереди повторов ───────────────────────
 
 export interface FlushResult {
