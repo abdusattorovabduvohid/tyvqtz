@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
+import { listRoles } from "@/lib/roles-list";
 import { SECTIONS } from "@/lib/permissions";
 
 const sectionKeys = SECTIONS.map((s) => s.key);
@@ -22,11 +23,7 @@ const createSchema = z.object({
 export async function GET() {
   try {
     await requirePermission("roles", "view");
-    const roles = await prisma.role.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { _count: { select: { users: true } } },
-    });
-    return NextResponse.json({ roles });
+    return NextResponse.json({ roles: await listRoles() });
   } catch (err) {
     return handleError(err);
   }

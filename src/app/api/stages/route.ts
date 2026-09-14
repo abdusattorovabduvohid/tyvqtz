@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
+import { listStages } from "@/lib/stages-list";
 import {
   worksSchema,
   worksToDurationSeconds,
@@ -20,11 +21,7 @@ const createSchema = z.object({
 export async function GET() {
   try {
     await requirePermission("stages", "view");
-    const stages = await prisma.stage.findMany({
-      orderBy: { number: "asc" },
-      include: { works: { orderBy: { number: "asc" } } },
-    });
-    return NextResponse.json({ stages });
+    return NextResponse.json({ stages: await listStages() });
   } catch (err) {
     return handleError(err);
   }

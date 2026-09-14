@@ -29,8 +29,8 @@ import {
 
 export interface RoleRow {
   id: string;
-  nameRu: string;
-  nameUz: string | null;
+  nameRu: string | null;
+  nameUz: string;
   isSuperAdmin: boolean;
   permissions: string;
   _count?: { users: number };

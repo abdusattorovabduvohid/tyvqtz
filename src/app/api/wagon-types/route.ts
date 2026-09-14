@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requirePermission, handleError, ApiError } from "@/lib/api";
+import { listWagonTypes } from "@/lib/wagon-types-list";
 
 const createSchema = z.object({
   nameUz: z.string().min(1, "Введите название типа"),
@@ -11,11 +12,7 @@ const createSchema = z.object({
 export async function GET() {
   try {
     await requirePermission("wagon-types", "view");
-    const types = await prisma.wagonType.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { _count: { select: { wagons: true } } },
-    });
-    return NextResponse.json({ types });
+    return NextResponse.json({ types: await listWagonTypes() });
   } catch (err) {
     return handleError(err);
   }
